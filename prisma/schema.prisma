@@ -1,0 +1,683 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum USER_ROLE {
+  ADMIN
+  ORGANIZATION
+}
+
+enum STATUS {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+model Operation {
+  id        String   @id @default(cuid())
+  name      String
+  status    STATUS   @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizations Organization[]
+}
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  operationId     String?
+  // Бүртгүүлэхдээ ашигласан (өөр байгууллагын) промо код. Урамшуулал түүний эзэнд очно.
+  referralPromoId String?
+  logo            String?
+  status          STATUS   @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users                 User[]
+  screenings            Screening[]
+  verifications         IdentityVerification[]
+  registryChecks        RegistryCheck[]
+  operation             Operation?             @relation(fields: [operationId], references: [id])
+  promos                Promo[]
+  wallet                Wallet?
+  subscriptions         Subscription[]
+  payments              Payment[]
+  serviceUsages         ServiceUsage[]
+  coupons               Coupon[]
+  couponRedemptions     CouponRedemption[]
+  screeningPrints       ScreeningPrint[]
+  referralPromo         Promo?                 @relation("Referral", fields: [referralPromoId], references: [id], onDelete: SetNull)
+  referralRewardsEarned ReferralReward[]       @relation("ReferralEarned")
+  referralRewardsPaid   ReferralReward[]       @relation("ReferralPaid")
+
+  @@index([operationId])
+}
+
+model Promo {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  discount       Int           @default(2)
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Энэ кодоор бүртгүүлсэн байгууллагууд
+  referredOrganizations Organization[] @relation("Referral")
+
+  @@index([organizationId])
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  firstName       String
+  lastName        String
+  contact         String
+  isEmailVerified Boolean   @default(false)
+  password        String?
+  organizationId  String?
+  role            USER_ROLE @default(ORGANIZATION)
+  status          STATUS    @default(ACTIVE)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  authLogs         AuthLog[]
+  sanctionImports  SanctionImport[]
+  screenings       Screening[]
+  verifications    IdentityVerification[]
+  registryChecks   RegistryCheck[]
+  coupons          Coupon[]
+  serviceUsages    ServiceUsage[]
+  screeningPrints  ScreeningPrint[]
+  paymentsCreated  Payment[]              @relation("PaymentCreatedBy")
+  paymentsReviewed Payment[]              @relation("PaymentReviewedBy")
+  // Байгууллагын хэрэглэгч аль байгууллагад харьяалагдахыг админ /managements/users-ээс тохируулна
+  organization     Organization?          @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+enum OTP_PURPOSE {
+  REGISTER
+  LOGIN
+}
+
+// И-мэйл баталгаажуулах нэг удаагийн код. Кодыг hash хэлбэрээр хадгална.
+model EmailOtp {
+  id        String      @id @default(cuid())
+  email     String
+  purpose   OTP_PURPOSE
+  codeHash  String
+  attempts  Int         @default(0)
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+
+  @@index([email, purpose])
+}
+
+enum AUTH_EVENT {
+  REGISTER
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  OTP_VERIFIED
+  OTP_FAILED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET
+  PASSWORD_RESET_FAILED
+  // Хэрэглэгч профайлаасаа нууц үгээ солих
+  PASSWORD_CHANGED
+  PASSWORD_CHANGE_FAILED
+}
+
+// Нэвтрэлттэй холбоотой үйлдлийн лог. Хэрэглэгч олдоогүй (буруу и-мэйл г.м.)
+// тохиолдолд userId хоосон, зөвхөн оролдсон и-мэйл хадгалагдана.
+model AuthLog {
+  id        String     @id @default(cuid())
+  userId    String?
+  email     String
+  event     AUTH_EVENT
+  // "credentials" | "google"
+  provider  String?
+  // Амжилтгүй болсон шалтгаан (wrong_password, inactive, invalid_token г.м.)
+  reason    String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime   @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@index([event, createdAt])
+}
+
+// Хоригийн жагсаалтын эх сурвалж. Тохиргоо нь src/lib/sanctions/sources.js-д.
+enum SANCTION_SOURCE {
+  UN
+  EU
+  UK
+  OFAC_SDN
+  OFAC_NON_SDN
+  US_CSL
+}
+
+enum SANCTION_SUBJECT {
+  INDIVIDUAL
+  ENTITY
+  VESSEL
+  AIRCRAFT
+}
+
+enum SANCTION_IMPORT_STATUS {
+  RUNNING
+  SUCCESS
+  // Сүүлийн амжилттай импортоос хойш жагсаалт өөрчлөгдөөгүй
+  NO_CHANGE
+  FAILED
+}
+
+// Хоригийн жагсаалтад орсон этгээд. Эх сурвалж бүрийн өгөгдлийг нэг загварт оруулна.
+model SanctionEntry {
+  id            String           @id @default(cuid())
+  source        SANCTION_SOURCE
+  // Эх сурвалж доторх дугаар (UN DATAID, OFAC uid, UK UniqueID г.м.)
+  externalId    String
+  subjectType   SANCTION_SUBJECT
+  name          String
+  aliases       String[]
+  birthDates    String[]
+  birthPlaces   String[]
+  nationalities String[]
+  addresses     String[]
+  // Паспорт, регистр, IMO г.м. "Төрөл: дугаар" хэлбэрээр
+  identifiers   String[]
+  // Хоригийн хөтөлбөр, дэглэм (SDGT, DPRK, ...)
+  programs      String[]
+  remarks       String?
+  listedAt      DateTime?
+  // Бичлэгийн агуулгын hash. Импортын үед өөрчлөгдсөн эсэхийг харьцуулна.
+  hash          String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([source, externalId])
+  @@index([name])
+}
+
+// Импортын түүх. Шалгасан ч өөрчлөлтгүй байсныг NO_CHANGE-ээр бүртгэнэ.
+model SanctionImport {
+  id          String                 @id @default(cuid())
+  source      SANCTION_SOURCE
+  status      SANCTION_IMPORT_STATUS @default(RUNNING)
+  // Нийт бичлэгийн hash. Сүүлийн SUCCESS-ийнхтэй ижил бол шинэчлэлт байхгүй.
+  contentHash String?
+  // Жагсаалтыг эх сурвалж нийтэлсэн/үүсгэсэн огноо
+  publishedAt DateTime?
+  total       Int                    @default(0)
+  added       Int                    @default(0)
+  updated     Int                    @default(0)
+  removed     Int                    @default(0)
+  error       String?
+  // Импорт хийсэн админ. Хоосон бол автомат (cron)
+  userId      String?
+  startedAt   DateTime               @default(now())
+  finishedAt  DateTime?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([source, startedAt])
+  @@index([startedAt])
+}
+
+// Харилцагчийг хоригийн жагсаалттай тулгасан шалгалт. Аудитад зориулж хайлтын
+// утга болон тухайн үеийн тохирлуудын хуулбарыг (results) хадгална.
+model Screening {
+  id             String            @id @default(cuid())
+  userId         String?
+  organizationId String?
+  // Хайсан утгууд
+  subjectType    SANCTION_SUBJECT?
+  name           String
+  birthDate      String?
+  country        String?
+  identifier     String?
+  sources        SANCTION_SOURCE[]
+  threshold      Int
+  // Үр дүн
+  matchCount     Int
+  topScore       Int
+  results        Json
+  createdAt      DateTime          @default(now())
+
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  prints       ScreeningPrint[]
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Тулгалтын тохирлыг хэвлэсэн түүх. Хэвлэсэн хуудсан дээрх QR нь энэ бичлэгийг заана.
+model ScreeningPrint {
+  id             String   @id @default(cuid())
+  screeningId    String
+  // Screening.results доторх тохирлын дугаар (0-ээс)
+  matchIndex     Int
+  // Баримтын дугаар "2026-1": тухайн он (Улаанбаатарын цагаар) ба оны доторх дэс дугаар
+  documentNumber String?  @unique
+  year           Int?
+  sequence       Int?
+  // Хэвлэсэн ажилтан ба түүний байгууллага
+  userId         String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+
+  screening    Screening     @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([screeningId, matchIndex, createdAt])
+}
+
+enum VERIFICATION_STATUS {
+  APPROVED
+  DECLINED
+}
+
+// Didit-ээр хийсэн иргэний бичиг баримт + нүүр тулгалт. Зургийг Didit хадгалдаг
+// (session decision-оос авна), энд зөвхөн уншсан мэдээлэл ба үр дүнг хадгална.
+model IdentityVerification {
+  id                 String              @id @default(cuid())
+  userId             String?
+  organizationId     String?
+  // Баримт бичиг ба нүүр тулгалт хоёулаа Approved бол APPROVED
+  status             VERIFICATION_STATUS
+  // Didit session id (GET /v3/session/{id}/decision/)
+  documentSessionId  String?
+  faceMatchSessionId String?
+  documentStatus     String?
+  faceMatchStatus    String?
+  faceMatchScore     Float?
+  faceMatchThreshold Float?
+  // Баримтаас уншсан мэдээлэл
+  documentType       String?
+  documentNumber     String?
+  personalNumber     String?
+  firstName          String?
+  lastName           String?
+  fullName           String?
+  dateOfBirth        String?
+  gender             String?
+  nationality        String?
+  issuingState       String?
+  dateOfIssue        String?
+  expirationDate     String?
+  address            String?
+  // Хоёр шалгалтын анхааруулгууд [{ feature, risk, logType, description }]
+  warnings           Json
+  // Зураггүй түүхий хариу (аудитад)
+  result             Json
+  createdAt          DateTime            @default(now())
+  registryChecks     RegistryCheck[]
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ХУР (Төрийн мэдээлэл солилцооны систем)-ын сервис дуудсан түүх.
+// operation: WS100125_checkCitizenRegnum, WS100101_getCitizenIDCardInfo г.м.
+model RegistryCheck {
+  id             String   @id @default(cuid())
+  verificationId String?
+  userId         String?
+  organizationId String?
+  operation      String
+  regnum         String
+  // ХУР-ын resultCode: 0 амжилттай, 1 олдсонгүй, бусад нь алдаа
+  resultCode     Int?
+  resultMessage  String?
+  requestId      String?
+  response       Json?
+  // ХУР-тай холбогдож чадаагүй үеийн алдаа
+  error          String?
+  createdAt      DateTime @default(now())
+
+  verification IdentityVerification? @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([verificationId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+enum DISCOUNT_TYPE {
+  // discountValue хувь (1-100)
+  PERCENT
+  // discountValue төгрөгөөр
+  AMOUNT
+  // Багцын хугацааг discountValue хоногоор сунгана
+  EXTEND_DAYS
+}
+
+// Админы үүсгэдэг хөнгөлөлтийн купон
+model Coupon {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  description    String?
+  discountType   DISCOUNT_TYPE @default(PERCENT)
+  discountValue  Int
+  // Нийт ашиглах дээд тоо. Хоосон бол хязгааргүй
+  usageLimit     Int?
+  usedCount      Int           @default(0)
+  // Хүчинтэй хугацаа. Хоосон бол хязгааргүй
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  status         STATUS        @default(ACTIVE)
+  // Зөвхөн энэ байгууллага ашиглана. Хоосон бол бүх байгууллага
+  organizationId String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  createdBy    User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  redemptions  CouponRedemption[]
+
+  @@index([status, expiresAt])
+}
+
+// Купоныг багц худалдан авахад ашигласан бүртгэл. Нэг байгууллага нэг купоныг нэг л удаа.
+// Төлбөр хүлээгдэж байх үед ч тоологдоно; төлбөр цуцлагдвал устгаж купоныг чөлөөлнө.
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  couponId       String
+  organizationId String
+  subscriptionId String   @unique
+  paymentId      String?  @unique
+  // Багцын үнээс хассан дүн, нэмсэн хоног
+  discountAmount Int      @default(0)
+  extraDays      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  coupon       Coupon       @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  payment      Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([couponId, organizationId])
+}
+
+// ---- Багц, хэтэвч, төлбөр ----
+// Мөнгөн дүн бүгд төгрөгөөр (бүхэл тоо). service нь src/lib/billing/services.js-д
+// бүртгэсэн үйлчилгээний түлхүүр (SANCTION_SCREENING, DOCUMENT_VERIFICATION, ...).
+
+// Админы тохируулдаг багц
+model Package {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String?
+  // Суурь үнэ. 0 бол бүх ашиглалт задгай үнээр хэтэвчнээс
+  basePrice    Int
+  // Идэвхжсэнээс хойш хүчинтэй хоног. Хоосон бол хугацаагүй
+  durationDays Int?
+  status       STATUS   @default(ACTIVE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items         PackageItem[]
+  subscriptions Subscription[]
+}
+
+// Багц дахь үйлчилгээ: суурь үнэд багтах тоо ба задгай үнэ
+model PackageItem {
+  id        String @id @default(cuid())
+  packageId String
+  service   String
+  quota     Int
+  unitPrice Int
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, service])
+}
+
+enum SUBSCRIPTION_STATUS {
+  // Суурь үнийн төлбөр хүлээгдэж байна
+  PENDING
+  ACTIVE
+  // Шинэ багц идэвхжсэн эсвэл хугацаа дууссан
+  ENDED
+  CANCELLED
+}
+
+// Байгууллагын худалдаж авсан багц. Багц дараа өөрчлөгдсөн ч худалдан авсан нөхцөл
+// хэвээр байхаар үнэ, тоог хуулбарлан хадгална. Байгууллагын бүх ажилтан дундаа хэрэглэнэ.
+model Subscription {
+  id             String              @id @default(cuid())
+  organizationId String
+  packageId      String?
+  packageName    String
+  basePrice      Int
+  durationDays   Int?
+  status         SUBSCRIPTION_STATUS @default(PENDING)
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  package      Package?           @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  items        SubscriptionItem[]
+  payments     Payment[]
+  usages       ServiceUsage[]
+  redemption   CouponRedemption?
+
+  @@index([organizationId, status])
+}
+
+model SubscriptionItem {
+  id             String @id @default(cuid())
+  subscriptionId String
+  service        String
+  // Багцын тоо + өмнөх багцаас шилжсэн тоо
+  quota          Int
+  used           Int    @default(0)
+  unitPrice      Int
+  // Үнэ өндөр багц руу шилжихэд өмнөх багцаас нэмэгдсэн үлдэгдэл (quota-д багтсан)
+  carriedOver    Int    @default(0)
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, service])
+}
+
+// Байгууллага бүрийн хэтэвч
+model Wallet {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  balance        Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
+
+enum WALLET_TRANSACTION_TYPE {
+  TOPUP
+  PACKAGE_PURCHASE
+  USAGE
+  REFUND
+  ADJUSTMENT
+  // Санал болгосон байгууллагын төлбөрөөс олгосон урамшуулал
+  REFERRAL_BONUS
+}
+
+// Хэтэвчний гүйлгээ. amount нэмэх (орлого) эсвэл хасах (зарлага) утгатай
+model WalletTransaction {
+  id           String                  @id @default(cuid())
+  walletId     String
+  type         WALLET_TRANSACTION_TYPE
+  amount       Int
+  balanceAfter Int
+  description  String
+  paymentId    String?
+  usageId      String?
+  userId       String?
+  createdAt    DateTime                @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+}
+
+enum PAYMENT_PURPOSE {
+  WALLET_TOPUP
+  PACKAGE_PURCHASE
+}
+
+enum PAYMENT_METHOD {
+  QPAY
+  BANK_TRANSFER
+  WALLET
+}
+
+enum PAYMENT_STATUS {
+  PENDING
+  PAID
+  REJECTED
+  CANCELLED
+}
+
+model Payment {
+  id             String          @id @default(cuid())
+  organizationId String
+  purpose        PAYMENT_PURPOSE
+  method         PAYMENT_METHOD
+  status         PAYMENT_STATUS  @default(PENDING)
+  amount         Int
+  subscriptionId String?
+  // Банкны гүйлгээний утга, QPay-ийн sender_invoice_no
+  reference      String          @unique
+  qpayInvoiceId  String?
+  // QPay-ийн QR, банкны апп-ын холбоос
+  qpayInvoice    Json?
+  // Байгууллагын бичсэн тайлбар (шилжүүлсэн данс г.м.), админы тайлбар
+  note           String?
+  adminNote      String?
+  createdById    String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  createdBy      User?             @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy     User?             @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  redemption     CouponRedemption?
+  referralReward ReferralReward?
+
+  @@index([organizationId, createdAt])
+  @@index([status, method])
+}
+
+enum USAGE_CHARGE {
+  // Суурь үнэд багтсан тооноос
+  QUOTA
+  // Задгай үнээр хэтэвчнээс
+  OVERAGE
+}
+
+// Үйлчилгээ ашигласан бүртгэл. Үйлчилгээ амжилтгүй болбол буцаана (refundedAt)
+model ServiceUsage {
+  id             String       @id @default(cuid())
+  organizationId String
+  subscriptionId String?
+  service        String
+  charge         USAGE_CHARGE
+  amount         Int          @default(0)
+  // Холбогдох бичлэг (Screening, IdentityVerification-ийн id)
+  referenceId    String?
+  userId         String?
+  refundedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, service, createdAt])
+}
+
+// Банкны шилжүүлгээр төлөх үед харуулах хүлээн авагч данс (админ тохируулна)
+model BankAccount {
+  id            String   @id @default(cuid())
+  bankName      String
+  accountName   String
+  accountNumber String
+  // IBAN (заавал биш)
+  iban          String?
+  sortOrder     Int      @default(0)
+  status        STATUS   @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Системийн ерөнхий тохиргоо (ганц мөр, id = "system"). Админ /managements/settings-ээс засна.
+// Хэвлэх тайлангийн толгойд холбоо барих мэдээлэл болж харагдана.
+model SystemSetting {
+  id          String   @id @default("system")
+  purpose     String?
+  website     String?
+  email       String?
+  phone       String?
+  address     String?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Баримтын дугаарын оны тоолуур. Он бүр 1-ээс эхэлнэ.
+model DocumentCounter {
+  year Int @id
+  last Int @default(0)
+}
+
+// Хориг тулгалтын онооны тохиргоо (ганц мөр, id = "matching"). config нь
+// src/lib/screening/config.js-ийн DEFAULT_MATCHING-ийн бүтэцтэй; хоосон талбар анхны утгаараа.
+model MatchingSetting {
+  id          String   @id @default("matching")
+  config      Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Санал болголтын урамшуулал: санал болгосон байгууллагын QPay/банкаар орж ирсэн төлбөр
+// бүрээс промо кодын хувиар эзэн байгууллагын хэтэвчинд. Нэг төлбөрөөс нэг л удаа.
+model ReferralReward {
+  id         String   @id @default(cuid())
+  // Урамшуулал авсан (промо кодын эзэн) ба төлбөр төлсөн байгууллага
+  referrerId String
+  referredId String
+  paymentId  String   @unique
+  rate       Int
+  amount     Int
+  createdAt  DateTime @default(now())
+
+  referrer Organization @relation("ReferralEarned", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred Organization @relation("ReferralPaid", fields: [referredId], references: [id], onDelete: Cascade)
+  payment  Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId, createdAt])
+}
