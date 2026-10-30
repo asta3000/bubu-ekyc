@@ -42,9 +42,10 @@ const DetailsStep = ({ email, verificationToken, onExpired }) => {
       return;
     }
 
-    // Бүртгэл амжилттай бол шууд нэвтрүүлнэ
-    const login = await signIn("credentials", { email, password: data.password, redirect: false });
-    window.location.assign(login?.error ? "/login" : "/");
+    // Бүртгэл амжилттай бол шууд нэвтрүүлнэ. Нэвтэрсэн бол proxy /login-оос эрхийнх нь
+    // хуудас руу шилжүүлнэ, үгүй бол /login хэвээр харагдана.
+    await signIn("credentials", { email, password: data.password, redirect: false });
+    window.location.assign("/login");
   };
 
   return (

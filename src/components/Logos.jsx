@@ -13,7 +13,7 @@ export const LogoMark = ({ className = "h-7 w-7", ...props }) => (
   />
 );
 
-// Брэнд нэр. Дарахад вэбсайтын нүүр (нэвтэрсэн бол proxy өөрийн хуудас руу шилжүүлнэ).
+// Брэнд нэр. Дарахад вэбсайтын нүүр.
 export const Logo = ({ href = "/", className = "text-lg" }) => (
   <Link href={href} className={`flex items-center gap-2 font-bold tracking-tight text-gray-900 ${className}`}>
     <LogoMark className="h-[1.6em] w-[1.6em]" loading="eager" />

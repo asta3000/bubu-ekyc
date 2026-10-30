@@ -44,8 +44,8 @@ const PasswordStep = ({ email, onBack }) => {
       return;
     }
 
-    // (root) нь өөр root layout тул бүтэн хуудсаар шилжинэ
-    window.location.assign("/");
+    // Бүтэн хуудсаар /login руу: proxy эрхийнх нь үндсэн хуудас руу шилжүүлнэ
+    window.location.assign("/login");
   };
 
   return (

@@ -19,7 +19,7 @@ const ROLE_RULES = [
   { prefix: "/api/organizations", roles: ["ADMIN", "ORGANIZATION"] },
 ];
 
-// Нүүр хуудаснаас эрх бүрийн үндсэн хуудас руу (хуудсууд нэмэгдэхэд бөглөнө)
+// Нэвтэрсэн хэрэглэгч /login, /register-т ороход эрхийнх нь үндсэн хуудас руу
 const ROLE_HOME = { ADMIN: "/managements", ORGANIZATION: "/organizations/match" };
 
 // Өөрийн хуудасгүй замуудын эхний хуудас
@@ -42,12 +42,13 @@ export const proxy = auth((request) => {
     return NextResponse.next();
   }
 
+  // Нэвтэрсний дараа client /login руу шилждэг тул энд эрхийнх нь хуудас руу явуулна
   if (AUTH_PAGES.some((prefix) => matches(pathname, prefix))) {
-    return user ? NextResponse.redirect(new URL("/", request.nextUrl)) : NextResponse.next();
+    return user ? NextResponse.redirect(new URL(ROLE_HOME[user.role], request.nextUrl)) : NextResponse.next();
   }
 
-  // Нэвтрээгүй хэрэглэгчид нүүр хуудас "/" вэбсайт болж харагдана
-  if (pathname === "/" && !user) return NextResponse.next();
+  // Нүүр хуудас "/" бол вэбсайт: нэвтэрсэн эсэхээс үл хамааран харуулна
+  if (pathname === "/") return NextResponse.next();
 
   // Token байхгүй эсвэл хугацаа нь дууссан
   if (!user) {
@@ -62,10 +63,10 @@ export const proxy = auth((request) => {
     if (isApi) {
       return NextResponse.json({ error: "Хандах эрхгүй" }, { status: 403 });
     }
-    return NextResponse.redirect(new URL("/", request.nextUrl));
+    return NextResponse.redirect(new URL(ROLE_HOME[user.role], request.nextUrl));
   }
 
-  const redirectTo = pathname === "/" ? ROLE_HOME[user.role] : INDEX_REDIRECTS[pathname];
+  const redirectTo = INDEX_REDIRECTS[pathname];
   if (redirectTo) return NextResponse.redirect(new URL(redirectTo, request.nextUrl));
 
   return NextResponse.next();

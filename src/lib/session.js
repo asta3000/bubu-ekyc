@@ -17,10 +17,10 @@ export async function requireSessionPage() {
   return session;
 }
 
-// Админы хуудсанд: нэвтрээгүй бол /login, эрх хүрэхгүй бол нүүр рүү
+// Админы хуудсанд: нэвтрээгүй бол /login, эрх хүрэхгүй бол /login (proxy өөрийн хуудас руу шилжүүлнэ)
 export async function requireAdminPage() {
   const session = await requireSessionPage();
-  if (session.user.role !== "ADMIN") redirect("/");
+  if (session.user.role !== "ADMIN") redirect("/login");
   return session;
 }
 

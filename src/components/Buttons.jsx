@@ -19,7 +19,7 @@ export const PrimaryButton = ({ pending, children, pendingText = "Түр хүл�
 
 export const GoogleButton = ({ children = "Google-ээр нэвтрэх" }) => (
   <Button
-    onClick={() => signIn("google", { redirectTo: "/" })}
+    onClick={() => signIn("google", { redirectTo: "/login" })}
     className="flex w-full items-center justify-center gap-2"
   >
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
