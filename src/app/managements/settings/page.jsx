@@ -21,6 +21,9 @@ const SettingsPage = async () => {
           email: settings?.email ?? "",
           phone: settings?.phone ?? "",
           address: settings?.address ?? "",
+          linkedin: settings?.linkedin ?? "",
+          facebook: settings?.facebook ?? "",
+          instagram: settings?.instagram ?? "",
         }}
       />
       <h2 className="pt-2 text-lg font-semibold">Хориг тулгалтын оноо</h2>

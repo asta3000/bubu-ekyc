@@ -644,6 +644,9 @@ model SystemSetting {
   email       String?
   phone       String?
   address     String?
+  linkedin    String?
+  facebook    String?
+  instagram   String?
   updatedById String?
   updatedAt   DateTime @updatedAt
 }

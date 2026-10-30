@@ -335,6 +335,14 @@ export const printSchema = z.object({
 
 const optionalText = (max, label) => nullable(z.string().trim().max(max, { error: `${label} хэт урт байна` }));
 
+// Сошиал хуудасны хаяг: тухайн сайтын https холбоос
+const socialUrl = (label, host) =>
+  nullable(
+    z
+      .url({ protocol: /^https$/, hostname: host, error: `${label} хаяг буруу байна (https://...)` })
+      .max(200, { error: "Хаяг хэт урт байна" }),
+  );
+
 export const systemSettingsSchema = z.object({
   purpose: optionalText(200, "Зориулалт"),
   website: nullable(
@@ -343,6 +351,9 @@ export const systemSettingsSchema = z.object({
   email: nullable(z.email({ error: "И-мэйл хаяг буруу байна" }).max(100)),
   phone: optionalText(50, "Утас"),
   address: optionalText(300, "Хаяг"),
+  linkedin: socialUrl("LinkedIn", /^([\w-]+\.)?linkedin\.com$/),
+  facebook: socialUrl("Facebook", /^([\w-]+\.)?(facebook\.com|fb\.com)$/),
+  instagram: socialUrl("Instagram", /^([\w-]+\.)?instagram\.com$/),
 });
 
 // ---- Хориг тулгалтын онооны тохиргоо ----

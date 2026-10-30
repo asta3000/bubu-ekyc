@@ -46,7 +46,10 @@ export const proxy = auth((request) => {
     return user ? NextResponse.redirect(new URL("/", request.nextUrl)) : NextResponse.next();
   }
 
-  // Token байхгүй эсвэл хугацаа нь дууссан (нүүр хуудас "/" ч мөн адил /login руу)
+  // Нэвтрээгүй хэрэглэгчид нүүр хуудас "/" вэбсайт болж харагдана
+  if (pathname === "/" && !user) return NextResponse.next();
+
+  // Token байхгүй эсвэл хугацаа нь дууссан
   if (!user) {
     if (isApi) {
       return NextResponse.json({ error: "Нэвтрэх шаардлагатай" }, { status: 401 });

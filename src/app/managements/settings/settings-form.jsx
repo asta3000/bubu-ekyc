@@ -17,7 +17,7 @@ const SettingsForm = ({ settings }) => {
   return (
     <Card
       title="Холбоо барих мэдээлэл"
-      description="Хэвлэх тайлангийн толгойд харагдана. Хоосон орхисон талбар тайланд гарахгүй (зориулалт, вэбсайт нь анхны утгаараа гарна)."
+      description="Вэбсайтын нүүр хуудас болон хэвлэх тайлангийн толгойд харагдана. Хоосон орхисон талбар гарахгүй (зориулалт, вэбсайт нь анхны утгаараа гарна)."
       className="w-full"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -37,6 +37,11 @@ const SettingsForm = ({ settings }) => {
           <Input label="Утас" name="phone" type="tel" maxLength={50} defaultValue={settings.phone} placeholder="7700-0000" error={errors.phone} />
         </div>
         <Textarea label="Хаяг" name="address" rows={2} maxLength={300} defaultValue={settings.address} error={errors.address} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Input label="LinkedIn" name="linkedin" type="url" defaultValue={settings.linkedin} placeholder="https://www.linkedin.com/company/..." error={errors.linkedin} />
+          <Input label="Facebook хуудас" name="facebook" type="url" defaultValue={settings.facebook} placeholder="https://www.facebook.com/..." error={errors.facebook} />
+          <Input label="Instagram" name="instagram" type="url" defaultValue={settings.instagram} placeholder="https://www.instagram.com/..." error={errors.instagram} />
+        </div>
         <div className="w-40">
           <PrimaryButton pending={pending}>Хадгалах</PrimaryButton>
         </div>

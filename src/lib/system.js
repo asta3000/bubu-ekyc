@@ -11,6 +11,9 @@ const DEFAULTS = {
   email: "",
   phone: "",
   address: "",
+  linkedin: "",
+  facebook: "",
+  instagram: "",
 };
 
 // Системийн мэдээлэл: админы тохиргоо, хоосон талбарт анхны утга (хэвлэх тайлангийн толгойд)
