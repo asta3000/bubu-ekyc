@@ -55,7 +55,7 @@ const SanctionsPage = async () => {
     <div className="space-y-6">
       <PageTitle
         title="Хоригийн жагсаалт"
-        description="НҮБ, ЕХ, АНУ, Их Британийн хоригийн жагсаалтыг эх сурвалжаас нь татаж шинэчилнэ. Өдөр бүр автоматаар шалгана."
+        description="НҮБ, ЕХ, АНУ, Их Британийн хоригийн жагсаалтыг эх сурвалжаас нь татаж шинэчилнэ (ЕХ 833/2014 XLV хавсралтыг кодонд хөтөлдөг). Өдөр бүр автоматаар шалгана."
       />
       <SanctionsManager sources={sources} history={history} />
     </div>

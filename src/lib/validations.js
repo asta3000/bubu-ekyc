@@ -123,7 +123,7 @@ export function logoFileError(file) {
 
 export const manageUserSchema = z.object({
   organizationId: nullable(z.string()),
-  role: z.enum(["ADMIN", "ORGANIZATION"], { error: "Эрх буруу байна" }),
+  role: z.enum(["ADMIN", "ORGANIZATION", "ORG_ADMIN"], { error: "Эрх буруу байна" }),
   status,
 });
 
@@ -167,8 +167,9 @@ export const matchSchema = z.object({
   ),
   country: nullable(z.string().trim().regex(/^[A-Z]{2}$/, { error: "Улс буруу байна" })),
   identifier: nullable(z.string().trim().max(100, { error: "Дугаар хэт урт байна" })),
+  // CUSTOM: байгууллагын өөрийн жагсаалтууд (API-д байгууллагын хэрэглэгчид л үлдээнэ)
   sources: z
-    .array(z.enum(SANCTION_SOURCE_KEYS), { error: "Жагсаалт сонгоно уу" })
+    .array(z.enum([...SANCTION_SOURCE_KEYS, "CUSTOM"]), { error: "Жагсаалт сонгоно уу" })
     .min(1, { error: "Дор хаяж нэг жагсаалт сонгоно уу" }),
   threshold: z.coerce
     .number({ error: "Босго буруу байна" })
@@ -380,4 +381,46 @@ export const matchingTestSchema = z.object({
   query: z.string({ error: "Хайсан нэр оруулна уу" }).trim().min(1, { error: "Хайсан нэр оруулна уу" }).max(200),
   candidate: z.string({ error: "Жагсаалтын нэр оруулна уу" }).trim().min(1, { error: "Жагсаалтын нэр оруулна уу" }).max(200),
   config: matchingSettingsSchema.optional(),
+});
+
+// ---- Байгууллагын өөрийн хоригийн жагсаалт (/organizations/lists) ----
+
+export const sanctionListSchema = z.object({
+  name: z
+    .string({ error: "Нэр оруулна уу" })
+    .trim()
+    .min(1, { error: "Нэр оруулна уу" })
+    .max(100, { error: "Нэр хэт урт байна" }),
+  description: optionalText(300, "Тайлбар"),
+  status,
+});
+
+export const sanctionListEntrySchema = z.object({
+  subjectType: z.enum(["INDIVIDUAL", "ENTITY", "VESSEL", "AIRCRAFT"], { error: "Төрөл буруу байна" }),
+  name: z
+    .string({ error: "Нэр оруулна уу" })
+    .trim()
+    .min(2, { error: "Нэр оруулна уу" })
+    .max(200, { error: "Нэр хэт урт байна" }),
+  // Мөр бүрт нэг нэр
+  aliases: z
+    .string()
+    .optional()
+    .default("")
+    .transform((value) => [...new Set(value.split("\n").map((line) => line.trim()).filter(Boolean))])
+    .pipe(
+      z
+        .array(z.string().max(200, { error: "Өөр нэр хэт урт байна" }))
+        .max(20, { error: "Өөр нэр 20-оос ихгүй байна" }),
+    ),
+  birthDate: nullable(
+    z
+      .string()
+      .trim()
+      .regex(/^\d{4}(-\d{2}-\d{2})?$/, { error: "Он (1975) эсвэл огноо (1975-03-21) оруулна уу" }),
+  ),
+  country: nullable(z.string().trim().regex(/^[A-Z]{2}$/, { error: "Улс буруу байна" })),
+  address: optionalText(300, "Хаяг"),
+  identifier: optionalText(100, "Дугаар"),
+  remarks: optionalText(1000, "Тайлбар"),
 });

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { formatDateTime, personName } from "@/lib/format";
-import { sanctionSource } from "@/lib/sanctions/sources";
+import { entrySourceName } from "@/lib/sanctions/sources";
 import { documentNumber, isValidPrintSignature, loadPrint, printMatch } from "@/lib/screening/prints";
 import { SYSTEM_NAME } from "@/lib/system";
 import { Card } from "@/components/Cards";
@@ -51,7 +51,7 @@ const VerifyContent = async ({ params, searchParams }) => {
         <Row label="Тулгасан нэр" value={screening.name} />
         <Row label="Тулгасан" value={`${formatDateTime(screening.createdAt)} · ${personName(screening.user)}`} />
         <Row label="Тохирсон этгээд" value={match.entry.name} />
-        <Row label="Жагсаалт" value={sanctionSource(match.entry.source)?.name ?? match.entry.source} />
+        <Row label="Жагсаалт" value={entrySourceName(match.entry)} />
         <Row label="Оноо" value={match.score} />
       </dl>
     </Card>

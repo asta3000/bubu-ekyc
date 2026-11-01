@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/Buttons";
 import { Card } from "@/components/Cards";
@@ -19,10 +19,48 @@ const thresholdOptions = (defaultThreshold) =>
   [...new Set([...THRESHOLD_VALUES, defaultThreshold])].sort((a, b) => a - b).map((value) => ({ value, label: `${value}%` }));
 
 // Жагсаалтын нэрний доорх тайлбар: бичлэгийн тоо, сүүлд шинэчлэгдсэн огноо
-const sourceDescription = ({ count, updatedAt }) =>
-  updatedAt
-    ? `${count.toLocaleString("en-US")} бичлэг · ${updatedAt}-нд шинэчлэгдсэн`
-    : "Импортлогдоогүй";
+const sourceDescription = ({ key, count, updatedAt }) =>
+  key === "CUSTOM" && !count
+    ? "Бичлэггүй: Өөрийн жагсаалт хэсгээс нэмнэ"
+    : updatedAt
+      ? `${count.toLocaleString("en-US")} бичлэг · ${updatedAt}-нд шинэчлэгдсэн`
+      : "Импортлогдоогүй";
+
+// Тулгалтын явц. Сервер явцаа мэдээлдэггүй тул хүсэлт хүлээх хооронд 95% хүртэл
+// аажмаар өсгөж, хариу ирэхэд 100% болгоод нууна. Идэвхгүй үед null.
+const useProgress = (active) => {
+  const [value, setValue] = useState(null);
+  useEffect(() => {
+    if (active) {
+      setValue(0);
+      const timer = setInterval(() => setValue((current) => current + (95 - current) * 0.05), 150);
+      return () => clearInterval(timer);
+    }
+    setValue((current) => (current === null ? null : 100));
+    const timer = setTimeout(() => setValue(null), 500);
+    return () => clearTimeout(timer);
+  }, [active]);
+  return value;
+};
+
+const MatchProgress = ({ value }) => (
+  <div className="space-y-1.5">
+    <div className="flex justify-between text-xs text-gray-600">
+      <span>{value < 100 ? "Жагсаалтуудтай тулгаж байна..." : "Дууслаа"}</span>
+      <span className="font-medium tabular-nums">{Math.round(value)}%</span>
+    </div>
+    <div
+      role="progressbar"
+      aria-label="Тулгалтын явц"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(value)}
+      className="h-2 overflow-hidden rounded-full bg-gray-100"
+    >
+      <div className="h-full rounded-full bg-blue-600 transition-[width] duration-150 ease-out" style={{ width: `${value}%` }} />
+    </div>
+  </div>
+);
 
 // Харилцагчийн мэдээллээр хоригийн жагсаалттай тулгана.
 // countries: [{ value, label }], sources: [{ key, name, count, updatedAt }],
@@ -33,6 +71,7 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
   const [subjectType, setSubjectType] = useState(defaults.subjectType ?? "INDIVIDUAL");
   const [state, setState] = useState({ errors: {} });
   const [pending, setPending] = useState(false);
+  const progress = useProgress(pending);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -133,8 +172,9 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
             <FieldError error={state.errors.sources} />
           </fieldset>
 
-          <div className="flex justify-end">
-            <div className="w-40">
+          <div className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">{progress !== null && <MatchProgress value={progress} />}</div>
+            <div className="w-40 shrink-0">
               <PrimaryButton pending={pending} pendingText="Тулгаж байна...">
                 Тулгах
               </PrimaryButton>

@@ -44,8 +44,28 @@ export const SANCTION_SOURCES = [
     url: "https://data.trade.gov/downloadable_consolidated_screening_list/v1/consolidated.json",
     infoUrl: "https://www.trade.gov/consolidated-screening-list",
   },
+  {
+    key: "EU_833_XLV",
+    name: "ЕХ 833/2014 — XLV хавсралт",
+    description:
+      "Оросын эсрэг гүйлгээний хориг (5ad зүйл): хоригийг тойроход тусалж буй ЕХ-оос гадны банк, крипто, төлбөрийн үйлчилгээ үзүүлэгч.",
+    // Татах файлгүй: хавсралтыг data/eu-833-annex-xlv.js-д хөтөлнө
+    url: null,
+    infoUrl: "https://eur-lex.europa.eu/eli/reg/2014/833",
+  },
 ];
+
+// Байгууллагын өөрийн жагсаалтын бичлэг (SanctionEntry.listId-тэй). Админы импорт, нийтийн
+// жагсаалтад орохгүй, зөвхөн тухайн байгууллагын тулгалтад ашиглагдана.
+export const CUSTOM_SOURCE = { key: "CUSTOM", name: "Байгууллагын өөрийн жагсаалт" };
 
 export const SANCTION_SOURCE_KEYS = SANCTION_SOURCES.map((source) => source.key);
 
-export const sanctionSource = (key) => SANCTION_SOURCES.find((source) => source.key === key);
+export const sanctionSource = (key) =>
+  key === CUSTOM_SOURCE.key ? CUSTOM_SOURCE : SANCTION_SOURCES.find((source) => source.key === key);
+
+// Тохирлын бичлэгийн жагсаалтын нэр. Өөрийн жагсаалтынх бол жагсаалтын нэрийг нэмнэ.
+export const entrySourceName = (entry) => {
+  const name = sanctionSource(entry.source)?.name ?? entry.source;
+  return entry.listName ? `${name}: ${entry.listName}` : name;
+};

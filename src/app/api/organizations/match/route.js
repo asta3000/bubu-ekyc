@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { parseBody } from "@/lib/api";
+import { fieldError, parseBody } from "@/lib/api";
 import { UsageError, attachUsage, consumeService, refundUsage, usageErrorResponse } from "@/lib/billing/usage";
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { findMatches, withEntryDetails } from "@/lib/screening/matcher";
@@ -18,6 +18,11 @@ export async function POST(request) {
   if (invalid) return invalid;
   const { payOverage, ...query } = data;
 
+  // Өөрийн жагсаалт зөвхөн байгууллагын хэрэглэгчийн тулгалтад (системийн админд биш)
+  const customOrganizationId = session.user.role === "ADMIN" ? null : organization.id;
+  if (!customOrganizationId) query.sources = query.sources.filter((source) => source !== "CUSTOM");
+  if (query.sources.length === 0) return fieldError("sources", "Дор хаяж нэг жагсаалт сонгоно уу");
+
   let usage;
   try {
     usage = await consumeService({
@@ -32,7 +37,7 @@ export async function POST(request) {
   }
 
   try {
-    const results = await withEntryDetails(await findMatches(query));
+    const results = await withEntryDetails(await findMatches({ ...query, organizationId: customOrganizationId }));
     const screening = await prisma.screening.create({
       data: {
         ...query,

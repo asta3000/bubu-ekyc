@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { maxBonus } from "./config";
 import { countryNames } from "./countries";
 import { getMatchingConfig } from "./matching-settings";
-import { getSanctionsIndex, identifierKey, parseBirthDates } from "./sanctions-index";
+import { getCustomEntries, getSanctionsIndex, identifierKey, parseBirthDates } from "./sanctions-index";
 import { nameScore, prepareName, transliterations } from "./text";
 
 const MAX_RESULTS = 50;
@@ -31,9 +31,10 @@ function checkCountry(query, entry) {
 const hasIdentifier = (key, entry) =>
   entry.identifierKeys.has(key) || entry.identifierKeys.has(key.replace(/^[A-Z]+/, ""));
 
-// Тулгалт хийнэ. Нэр заавал, бусад нь заавал биш.
+// Тулгалт хийнэ. Нэр заавал, бусад нь заавал биш. sources-д CUSTOM байвал
+// organizationId-ийн өөрийн жагсаалтуудыг нэмж тулгана.
 // Буцаах: [{ entryId, score, nameScore, matchedName, checks: { birthDate, country, identifier } }]
-export async function findMatches({ name, subjectType, birthDate, country, identifier, sources, threshold }) {
+export async function findMatches({ name, subjectType, birthDate, country, identifier, sources, threshold, organizationId }) {
   const config = await getMatchingConfig();
   const stopWords = new Set(config.stopWords);
   const adjust = adjustments(config);
@@ -44,8 +45,11 @@ export async function findMatches({ name, subjectType, birthDate, country, ident
   const queryCountry = country ? { code: country, names: countryNames(country) } : null;
   const queryId = identifierKey(identifier);
 
+  const entries = await getSanctionsIndex(stopWords);
+  const custom = sources.includes("CUSTOM") && organizationId ? await getCustomEntries(organizationId, stopWords) : [];
+
   const matches = [];
-  for (const entry of await getSanctionsIndex(stopWords)) {
+  for (const entry of [...entries, ...custom]) {
     if (!sources.includes(entry.source)) continue;
     // CSL нь хувь хүн, байгууллагыг ялгадаггүй тул төрлөөр шүүхгүй
     if (subjectType && entry.subjectType !== subjectType && entry.source !== "US_CSL") continue;
@@ -97,13 +101,17 @@ export async function withEntryDetails(matches) {
       programs: true,
       remarks: true,
       listedAt: true,
+      list: { select: { name: true } },
     },
   });
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   return matches
     .filter((match) => byId.has(match.entryId))
     .map((match) => {
-      const { id, ...entry } = byId.get(match.entryId);
-      return { ...match, entry: { ...entry, listedAt: entry.listedAt?.toISOString() ?? null } };
+      const { id, list, ...entry } = byId.get(match.entryId);
+      return {
+        ...match,
+        entry: { ...entry, listedAt: entry.listedAt?.toISOString() ?? null, listName: list?.name ?? null },
+      };
     });
 }

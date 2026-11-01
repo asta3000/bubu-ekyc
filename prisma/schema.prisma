@@ -9,6 +9,8 @@ datasource db {
 enum USER_ROLE {
   ADMIN
   ORGANIZATION
+  // Байгууллагын хэрэглэгч + байгууллагынхаа өөрийн хоригийн жагсаалтыг удирдана
+  ORG_ADMIN
 }
 
 enum STATUS {
@@ -51,6 +53,7 @@ model Organization {
   coupons               Coupon[]
   couponRedemptions     CouponRedemption[]
   screeningPrints       ScreeningPrint[]
+  sanctionLists         SanctionList[]
   referralPromo         Promo?                 @relation("Referral", fields: [referralPromoId], references: [id], onDelete: SetNull)
   referralRewardsEarned ReferralReward[]       @relation("ReferralEarned")
   referralRewardsPaid   ReferralReward[]       @relation("ReferralPaid")
@@ -97,6 +100,7 @@ model User {
   screeningPrints  ScreeningPrint[]
   paymentsCreated  Payment[]              @relation("PaymentCreatedBy")
   paymentsReviewed Payment[]              @relation("PaymentReviewedBy")
+  sanctionLists    SanctionList[]
   // Байгууллагын хэрэглэгч аль байгууллагад харьяалагдахыг админ /managements/users-ээс тохируулна
   organization     Organization?          @relation(fields: [organizationId], references: [id])
 
@@ -166,6 +170,9 @@ enum SANCTION_SOURCE {
   OFAC_SDN
   OFAC_NON_SDN
   US_CSL
+  EU_833_XLV
+  // Байгууллагын өөрийн жагсаалт (SanctionEntry.listId-тэй)
+  CUSTOM
 }
 
 enum SANCTION_SUBJECT {
@@ -204,11 +211,36 @@ model SanctionEntry {
   listedAt      DateTime?
   // Бичлэгийн агуулгын hash. Импортын үед өөрчлөгдсөн эсэхийг харьцуулна.
   hash          String
+  // Байгууллагын өөрийн жагсаалтын бичлэг бол (source = CUSTOM)
+  listId        String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
+  list SanctionList? @relation(fields: [listId], references: [id], onDelete: Cascade)
+
   @@unique([source, externalId])
   @@index([name])
+  @@index([listId])
+}
+
+// Байгууллагын өөрийн хоригийн жагсаалт. Тухайн байгууллагын ORG_ADMIN л удирдана,
+// бичлэгүүд нь (SanctionEntry, source = CUSTOM) зөвхөн тэр байгууллагын тулгалтад орно.
+model SanctionList {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  // INACTIVE бол тулгалтад орохгүй
+  status         STATUS   @default(ACTIVE)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  entries      SanctionEntry[]
+
+  @@unique([organizationId, name])
 }
 
 // Импортын түүх. Шалгасан ч өөрчлөлтгүй байсныг NO_CHANGE-ээр бүртгэнэ.

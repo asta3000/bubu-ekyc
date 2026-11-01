@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { normalize, prepareName } from "./text";
+import { normalize, prepareName, transliterations } from "./text";
 
 // Хоригийн бүх бичлэгийг (~40 мянга) тулгахад бэлэн хэлбэрээр санах ойд хадгална.
 // Шинэ импорт хийгдэхэд (сүүлийн SUCCESS импорт өөрчлөгдөхөд) дахин ачаална.
@@ -50,6 +50,13 @@ function identifierKeys(identifiers) {
   return keys;
 }
 
+// Кирилл нэрийг (өөрийн жагсаалт, UK-ийн латин бус нэрс) хайлтын адил латин болгож
+// тулгана. text нь эх бичлэгээрээ үлдэж "Таарсан нэр"-д харагдана.
+const prepareNames = (names, stopWords) =>
+  names
+    .flatMap((name) => transliterations(name).map((variant) => ({ ...prepareName(variant, stopWords), text: name })))
+    .filter((name) => name.tokens.length);
+
 function prepareEntry(entry, stopWords) {
   const { years, dates } = parseBirthDates(entry.birthDates);
   const places = [...entry.nationalities, ...entry.birthPlaces, ...entry.addresses];
@@ -57,7 +64,7 @@ function prepareEntry(entry, stopWords) {
     id: entry.id,
     source: entry.source,
     subjectType: entry.subjectType,
-    names: [entry.name, ...entry.aliases].map((name) => prepareName(name, stopWords)).filter((name) => name.tokens.length),
+    names: prepareNames([entry.name, ...entry.aliases], stopWords),
     years,
     dates,
     // Иргэншил, төрсөн газар, хаягийн нормчилсон текст (улс тулгахад)
@@ -68,25 +75,38 @@ function prepareEntry(entry, stopWords) {
   };
 }
 
+const ENTRY_SELECT = {
+  id: true,
+  source: true,
+  subjectType: true,
+  name: true,
+  aliases: true,
+  birthDates: true,
+  birthPlaces: true,
+  nationalities: true,
+  addresses: true,
+  identifiers: true,
+};
+
 let cache = { version: null, entries: [], loading: null };
 
+// Байгууллагын өөрийн жагсаалтууд санах ойн кэшид орохгүй (импортоос гадуур өөрчлөгддөг)
 async function load(version, stopWords) {
   const rows = await prisma.sanctionEntry.findMany({
-    select: {
-      id: true,
-      source: true,
-      subjectType: true,
-      name: true,
-      aliases: true,
-      birthDates: true,
-      birthPlaces: true,
-      nationalities: true,
-      addresses: true,
-      identifiers: true,
-    },
+    where: { listId: null },
+    select: ENTRY_SELECT,
   });
   cache = { version, entries: rows.map((row) => prepareEntry(row, stopWords)), loading: null };
   return cache.entries;
+}
+
+// Байгууллагын идэвхтэй өөрийн жагсаалтуудын бичлэг. Цөөн тул тулгалт бүрт DB-ээс уншина.
+export async function getCustomEntries(organizationId, stopWords) {
+  const rows = await prisma.sanctionEntry.findMany({
+    where: { list: { organizationId, status: "ACTIVE" } },
+    select: ENTRY_SELECT,
+  });
+  return rows.map((row) => prepareEntry(row, stopWords));
 }
 
 // stopWords: Set. Админ утгагүй үгсийн жагсаалтыг өөрчилбөл нэрсийг дахин бэлтгэнэ.

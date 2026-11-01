@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { organizationLogoSrc } from "@/lib/blob";
 import { formatDate, formatDateTime, personName } from "@/lib/format";
 import { organizationScope, requireOrganizationPage } from "@/lib/organization-access";
-import { sanctionSource } from "@/lib/sanctions/sources";
+import { entrySourceName, sanctionSource } from "@/lib/sanctions/sources";
 import { countryLabel } from "@/lib/screening/countries";
 import { documentNumber, loadPrint, printMatch, printVerifyUrl } from "@/lib/screening/prints";
 import { getSystemInfo } from "@/lib/system";
@@ -150,7 +150,7 @@ const PrintContent = async ({ params }) => {
         <Section title="Тохирлын дэлгэрэнгүй">
           <Fields>
             <Field label="Нэр" value={entry.name} />
-            <Field label="Жагсаалт" value={`${sanctionSource(entry.source)?.name ?? entry.source} · ${entry.externalId}`} />
+            <Field label="Жагсаалт" value={entry.source === "CUSTOM" ? entrySourceName(entry) : `${entrySourceName(entry)} · ${entry.externalId}`} />
             <Field label="Төрөл" value={SUBJECT_LABELS[entry.subjectType]} />
             <Field label="Өөр нэрс" value={limited(entry.aliases, MAX_ITEMS.aliases)} />
             <Field label="Төрсөн огноо" value={entry.birthDates} />

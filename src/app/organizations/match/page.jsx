@@ -3,7 +3,7 @@ import { formatDate } from "@/lib/format";
 import { countryOptions } from "@/lib/screening/countries";
 import { getMatchingConfig } from "@/lib/screening/matching-settings";
 import { organizationScope, requireOrganizationPage } from "@/lib/organization-access";
-import { SANCTION_SOURCES } from "@/lib/sanctions/sources";
+import { CUSTOM_SOURCE, SANCTION_SOURCES } from "@/lib/sanctions/sources";
 import { AccessDenied } from "@/components/Messages";
 import { PageTitle } from "@/components/Titles";
 import MatchForm from "../_components/match-form";
@@ -14,7 +14,7 @@ export const metadata = { title: "Хориг тулгах" };
 
 const PAGE = {
   title: "Хоригийн жагсаалттай тулгах",
-  description: "Харилцагч НҮБ, ЕХ, АНУ, Их Британийн хоригийн жагсаалтад орсон эсэхийг шалгана.",
+  description: "Харилцагч НҮБ, ЕХ, АНУ, Их Британийн болон байгууллагынхаа өөрийн хоригийн жагсаалтад орсон эсэхийг шалгана.",
 };
 
 const HISTORY_LIMIT = 30;
@@ -41,14 +41,26 @@ async function sourceStats() {
   });
 }
 
+// Байгууллагын идэвхтэй өөрийн жагсаалтууд нэг сонголт болно. Бичлэггүй бол идэвхгүй харагдана.
+async function customSourceStats(organizationId) {
+  const where = { organizationId, status: "ACTIVE" };
+  const [count, latest] = await Promise.all([
+    prisma.sanctionEntry.count({ where: { list: where } }),
+    prisma.sanctionList.findFirst({ where, orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
+  ]);
+  if (!latest) return [];
+  return [{ key: CUSTOM_SOURCE.key, name: CUSTOM_SOURCE.name, count, updatedAt: formatDate(latest.updatedAt) }];
+}
+
 // searchParams: баталгаажуулалтаас ирэхэд name, birthDate, subjectType-ээр form-ыг бөглөнө
 const MatchPage = async ({ searchParams }) => {
   const { session, organization, accessError } = await requireOrganizationPage();
   if (accessError) return <AccessDenied {...PAGE} error={accessError} />;
 
   const isAdmin = session.user.role === "ADMIN";
-  const [sources, screenings, matching] = await Promise.all([
+  const [sources, customSources, screenings, matching] = await Promise.all([
     sourceStats(),
+    isAdmin ? [] : customSourceStats(organization.id),
     prisma.screening.findMany({
       where: organizationScope(session, organization),
       orderBy: { createdAt: "desc" },
@@ -73,7 +85,7 @@ const MatchPage = async ({ searchParams }) => {
       <ServiceAllowance organization={organization} service="SANCTION_SCREENING" />
       <MatchForm
         countries={countryOptions()}
-        sources={sources}
+        sources={[...sources, ...customSources]}
         defaults={await searchParams}
         defaultThreshold={matching.defaultThreshold}
       />

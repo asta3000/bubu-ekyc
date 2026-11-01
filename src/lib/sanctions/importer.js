@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { parseCsl } from "./parsers/csl";
 import { parseEu } from "./parsers/eu";
+import { parseEu833 } from "./parsers/eu-833";
 import { parseOfac } from "./parsers/ofac";
 import { parseUk } from "./parsers/uk";
 import { parseUn } from "./parsers/un";
@@ -15,6 +16,7 @@ const PARSERS = {
   OFAC_NON_SDN: parseOfac,
   UK: parseUk,
   US_CSL: parseCsl,
+  EU_833_XLV: parseEu833,
 };
 
 // Үүнээс удаан RUNNING байгаа импортыг тасарсан гэж үзнэ
@@ -69,7 +71,8 @@ export async function importSanctions(sourceKey, userId = null) {
     });
 
   try {
-    const parsed = PARSERS[source.key](await download(source.url));
+    // url-гүй эх сурвалж (EU_833_XLV) өгөгдлөө кодоос уншина
+    const parsed = PARSERS[source.key](source.url ? await download(source.url) : null);
     const { records, contentHash } = prepare(parsed.records, source.key);
     if (records.length === 0) throw new Error("Жагсаалтаас бичлэг олдсонгүй. Файлын бүтэц өөрчлөгдсөн байж магадгүй.");
 

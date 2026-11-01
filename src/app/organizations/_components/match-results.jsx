@@ -5,7 +5,7 @@ import { Button } from "@/components/Buttons";
 import { Card } from "@/components/Cards";
 import { Message } from "@/components/Messages";
 import { sendJson } from "@/lib/fetcher";
-import { sanctionSource } from "@/lib/sanctions/sources";
+import { entrySourceName } from "@/lib/sanctions/sources";
 import { Badge, toneClass } from "@/components/Badges";
 import { CHECK_LABELS, SUBJECT_LABELS, scoreLevel } from "./labels";
 
@@ -112,7 +112,7 @@ const MatchItem = ({ match, index, screeningId, prints }) => {
             <p className="text-sm text-gray-500">Таарсан нэр: {match.matchedName}</p>
           )}
           <p className="text-xs text-gray-500">
-            {sanctionSource(entry.source)?.name ?? entry.source} · {SUBJECT_LABELS[entry.subjectType]} ·
+            {entrySourceName(entry)} · {SUBJECT_LABELS[entry.subjectType]} ·
             Нэрийн тохирол {match.nameScore}%
           </p>
           <div className="flex flex-wrap gap-1 pt-1">
@@ -136,7 +136,7 @@ const MatchItem = ({ match, index, screeningId, prints }) => {
             <DetailRow label="Бичиг баримт" values={entry.identifiers} />
             <DetailRow label="Хөтөлбөр" values={entry.programs} />
             <DetailRow label="Жагсаалтад орсон" values={entry.listedAt?.slice(0, 10)} />
-            <DetailRow label="Дугаар" values={entry.externalId} />
+            {entry.source !== "CUSTOM" && <DetailRow label="Дугаар" values={entry.externalId} />}
             <DetailRow label="Тайлбар" values={entry.remarks} />
           </dl>
           {screeningId && <PrintSection screeningId={screeningId} index={index} prints={prints} />}

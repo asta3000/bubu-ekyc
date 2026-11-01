@@ -21,6 +21,11 @@ export async function PATCH(request, ctx) {
     );
   }
 
+  // Байгууллагын админ байгууллагынхаа жагсаалтыг удирддаг тул байгууллагагүй байж болохгүй
+  if (data.role === "ORG_ADMIN" && !data.organizationId) {
+    return fieldError("organizationId", "Байгууллагын админд байгууллага сонгоно уу");
+  }
+
   if (data.organizationId) {
     const organization = await prisma.organization.findFirst({
       where: { id: data.organizationId, ...notDeleted },

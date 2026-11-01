@@ -144,6 +144,7 @@ export const Navbar = ({ user }) => (
         <NavLink href="/organizations/verifications">Баталгаажуулалт</NavLink>
         <NavLink href="/organizations/match">Хориг тулгах</NavLink>
         <NavLink href="/organizations/billing">Багц, төлбөр</NavLink>
+        {user.role === "ORG_ADMIN" && <NavLink href="/organizations/lists">Өөрийн жагсаалт</NavLink>}
         {user.role === "ADMIN" && <NavLink href="/managements">Удирдлага</NavLink>}
       </div>
       <UserMenu user={user} />

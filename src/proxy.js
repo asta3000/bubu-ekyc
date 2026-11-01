@@ -11,16 +11,23 @@ const PUBLIC_PATHS = ["/api/auth", "/api/cron", "/api/payments/qpay/callback", "
 
 // Role-оор хамгаалах замууд. Илүү нарийн замыг эхэнд бичнэ.
 const ROLE_RULES = [
+  // Байгууллагын өөрийн жагсаалт: зөвхөн ORG_ADMIN (системийн ADMIN ч хандахгүй)
+  { prefix: "/organizations/lists", roles: ["ORG_ADMIN"] },
+  { prefix: "/api/organizations/lists", roles: ["ORG_ADMIN"] },
   { prefix: "/admins", roles: ["ADMIN"] },
   { prefix: "/api/admins", roles: ["ADMIN"] },
   { prefix: "/managements", roles: ["ADMIN"] },
   { prefix: "/api/managements", roles: ["ADMIN"] },
-  { prefix: "/organizations", roles: ["ADMIN", "ORGANIZATION"] },
-  { prefix: "/api/organizations", roles: ["ADMIN", "ORGANIZATION"] },
+  { prefix: "/organizations", roles: ["ADMIN", "ORGANIZATION", "ORG_ADMIN"] },
+  { prefix: "/api/organizations", roles: ["ADMIN", "ORGANIZATION", "ORG_ADMIN"] },
 ];
 
 // Нэвтэрсэн хэрэглэгч /login, /register-т ороход эрхийнх нь үндсэн хуудас руу
-const ROLE_HOME = { ADMIN: "/managements", ORGANIZATION: "/organizations/match" };
+const ROLE_HOME = {
+  ADMIN: "/managements",
+  ORGANIZATION: "/organizations/match",
+  ORG_ADMIN: "/organizations/match",
+};
 
 // Өөрийн хуудасгүй замуудын эхний хуудас
 const INDEX_REDIRECTS = {
