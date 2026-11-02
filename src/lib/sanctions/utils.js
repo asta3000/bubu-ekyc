@@ -53,7 +53,7 @@ export const parseXml = (text) => xmlParser.parse(text);
 // Эх сурвалжаас татна. Том файлууд тул 2 минутын хугацаа өгнө.
 export async function download(url) {
   const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; e-KYC sanctions importer)" },
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; VerdecX sanctions importer)" },
     signal: AbortSignal.timeout(120_000),
     cache: "no-store",
   });

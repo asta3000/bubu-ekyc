@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { UsageError, attachUsage, consumeService, refundUsage, usageErrorResponse } from "@/lib/billing/usage";
 import { DiditError, downloadImage, matchFaces, verifyDocument } from "@/lib/didit";
 import { requireOrganizationApi } from "@/lib/organization-access";
+import { logAudit } from "@/lib/audit/log";
 import { FACE_MATCH_THRESHOLD, buildVerification } from "@/lib/verifications";
 import {
   DOCUMENT_MAX_SIZE,
@@ -107,5 +108,13 @@ export async function POST(request) {
     select: { id: true },
   });
   await attachUsage(usage, verification.id);
+  await logAudit({
+    action: "verification.create",
+    actor: session.user,
+    organizationId: organization?.id ?? null,
+    entity: { type: "IdentityVerification", id: verification.id },
+    summary: "Иргэний бичиг баримт баталгаажуулав",
+    metadata: { faceMatch: Boolean(faceMatch), faceMatchError: faceMatch?.error ?? null },
+  });
   return Response.json({ id: verification.id }, { status: 201 });
 }

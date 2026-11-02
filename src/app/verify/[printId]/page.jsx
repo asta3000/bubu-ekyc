@@ -52,7 +52,7 @@ const VerifyContent = async ({ params, searchParams }) => {
         <Row label="Тулгасан" value={`${formatDateTime(screening.createdAt)} · ${personName(screening.user)}`} />
         <Row label="Тохирсон этгээд" value={match.entry.name} />
         <Row label="Жагсаалт" value={entrySourceName(match.entry)} />
-        <Row label="Оноо" value={match.score} />
+        <Row label="Тохирлын хувь" value={`${match.score}%`} />
       </dl>
     </Card>
   );
@@ -61,7 +61,7 @@ const VerifyContent = async ({ params, searchParams }) => {
 const VerifyPage = ({ params, searchParams }) => (
   <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-gray-50 px-4 py-10">
     <p className="text-2xl font-bold tracking-tight text-gray-900">
-      e-<span className="text-blue-600">KYC</span>
+      Verdec<span className="text-blue-600">X</span>
     </p>
     <Suspense fallback={<Loading />}>
       <VerifyContent params={params} searchParams={searchParams} />

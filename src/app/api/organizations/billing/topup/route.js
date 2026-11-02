@@ -1,9 +1,11 @@
 import { fieldError, parseBody } from "@/lib/api";
 import { requireBillingApi } from "@/lib/billing/access";
+import { PAYMENT_METHODS } from "@/lib/billing/labels";
 import { PaymentError, createTopup, minTopupAmount } from "@/lib/billing/payments";
 import { isQpayConfigured } from "@/lib/billing/qpay";
 import { formatMoney } from "@/lib/format";
 import { topupSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit/log";
 
 // Хэтэвч цэнэглэх төлбөр үүсгэнэ (QPay нэхэмжлэх эсвэл банкны шилжүүлгийн утга)
 export async function POST(request) {
@@ -22,6 +24,14 @@ export async function POST(request) {
 
   try {
     const payment = await createTopup({ organizationId: organization.id, userId: session.user.id, ...data });
+    await logAudit({
+      action: "billing.topup",
+      actor: session.user,
+      organizationId: organization.id,
+      entity: { type: "Payment", id: payment.id },
+      summary: `Хэтэвч ${formatMoney(data.amount)}-өөр цэнэглэх төлбөр үүсгэв (${PAYMENT_METHODS[data.method]})`,
+      metadata: { method: data.method, reference: payment.reference },
+    });
     return Response.json({ paymentId: payment.id }, { status: 201 });
   } catch (err) {
     if (err instanceof PaymentError) return Response.json({ error: err.message }, { status: 502 });

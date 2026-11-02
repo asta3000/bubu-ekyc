@@ -4,6 +4,7 @@ import { UsageError, attachUsage, consumeService, refundUsage, usageErrorRespons
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { findMatches, withEntryDetails } from "@/lib/screening/matcher";
 import { matchSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit/log";
 
 // Хүйтэн эхлэлд хоригийн бүх бичлэгийг санах ойд ачаална
 export const maxDuration = 60;
@@ -50,6 +51,14 @@ export async function POST(request) {
       select: { id: true },
     });
     await attachUsage(usage, screening.id);
+    await logAudit({
+      action: "screening.create",
+      actor: session.user,
+      organizationId: organization?.id ?? null,
+      entity: { type: "Screening", id: screening.id },
+      summary: `"${query.name}"-г тулгав: ${results.length ? `${results.length} тохирол, дээд оноо ${results[0].score}` : "тохиролгүй"}`,
+      metadata: { sources: query.sources, threshold: query.threshold, charge: usage?.charge ?? null },
+    });
     return Response.json({ id: screening.id, results });
   } catch (err) {
     // Тулгалт хийгдээгүй тул ашиглалтыг буцаана

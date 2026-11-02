@@ -1,19 +1,28 @@
+import { secondReferralRate } from "@/lib/billing/referrals";
+import { uncontractedUserLimit } from "@/lib/organizations";
 import { getMatchingConfig } from "@/lib/screening/matching-settings";
 import { getSystemSettings } from "@/lib/system";
 import { requireAdminPage } from "@/lib/session";
 import { PageTitle } from "@/components/Titles";
 import MatchingSettings from "./matching-settings";
+import ReferralSettings from "./referral-settings";
+import RegistrationSettings from "./registration-settings";
 import SettingsForm from "./settings-form";
 
 export const metadata = { title: "Тохиргоо" };
 
 const SettingsPage = async () => {
   await requireAdminPage();
-  const [settings, matching] = await Promise.all([getSystemSettings(), getMatchingConfig()]);
+  const [settings, matching, secondRate, userLimit] = await Promise.all([
+    getSystemSettings(),
+    getMatchingConfig(),
+    secondReferralRate(),
+    uncontractedUserLimit(),
+  ]);
 
   return (
     <div className="space-y-6">
-      <PageTitle title="Тохиргоо" description="Системийн ерөнхий мэдээлэл, хориг тулгалтын оноо" />
+      <PageTitle title="Тохиргоо" description="Системийн ерөнхий мэдээлэл, бүртгэл, санал болголтын урамшуулал, хориг тулгалтын оноо" />
       <SettingsForm
         settings={{
           purpose: settings?.purpose ?? "",
@@ -26,6 +35,8 @@ const SettingsPage = async () => {
           instagram: settings?.instagram ?? "",
         }}
       />
+      <RegistrationSettings uncontractedUserLimit={userLimit} />
+      <ReferralSettings secondRate={secondRate} />
       <h2 className="pt-2 text-lg font-semibold">Хориг тулгалтын оноо</h2>
       <MatchingSettings initial={matching} />
     </div>

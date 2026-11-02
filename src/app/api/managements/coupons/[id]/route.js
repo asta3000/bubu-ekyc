@@ -3,10 +3,11 @@ import { notDeleted, parseBody, prismaErrorResponse } from "@/lib/api";
 import { requireAdminApi } from "@/lib/session";
 import { couponSchema } from "@/lib/validations";
 import { COUPON_ERRORS, checkCouponOrganization } from "../shared";
+import { diffChanges, logAudit } from "@/lib/audit/log";
 
 // Купон засна. Код хоосон бол хуучнаараа үлдэнэ.
 export async function PATCH(request, ctx) {
-  const { error } = await requireAdminApi();
+  const { error, session } = await requireAdminApi();
   if (error) return error;
 
   const { data, error: invalid } = await parseBody(request, couponSchema);
@@ -16,11 +17,21 @@ export async function PATCH(request, ctx) {
 
   const { id } = await ctx.params;
   const { code, ...rest } = data;
+  const before = await prisma.coupon.findUnique({ where: { id } });
   try {
     const coupon = await prisma.coupon.update({
       where: { id, ...notDeleted },
       data: code ? { ...rest, code } : rest,
       select: { id: true },
+    });
+    const after = code ? { ...rest, code } : rest;
+    await logAudit({
+      action: "coupon.update",
+      actor: session.user,
+      organizationId: null,
+      entity: { type: "Coupon", id },
+      summary: `"${code ?? before?.code}" купоныг өөрчлөв`,
+      changes: diffChanges(before, after),
     });
     return Response.json({ coupon });
   } catch (err) {
@@ -30,12 +41,23 @@ export async function PATCH(request, ctx) {
 
 // Soft delete. Ашиглагдсан түүхтэй байж болох тул устгахгүй.
 export async function DELETE(request, ctx) {
-  const { error } = await requireAdminApi();
+  const { error, session } = await requireAdminApi();
   if (error) return error;
 
   const { id } = await ctx.params;
   try {
-    await prisma.coupon.update({ where: { id, ...notDeleted }, data: { status: "DELETED" } });
+    const { code } = await prisma.coupon.update({
+      where: { id, ...notDeleted },
+      data: { status: "DELETED" },
+      select: { code: true },
+    });
+    await logAudit({
+      action: "coupon.delete",
+      actor: session.user,
+      organizationId: null,
+      entity: { type: "Coupon", id },
+      summary: `"${code}" купоныг устгав`,
+    });
     return Response.json({ ok: true });
   } catch (err) {
     return prismaErrorResponse(err, COUPON_ERRORS);

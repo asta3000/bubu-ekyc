@@ -145,6 +145,9 @@ export const Navbar = ({ user }) => (
         <NavLink href="/organizations/match">Хориг тулгах</NavLink>
         <NavLink href="/organizations/billing">Багц, төлбөр</NavLink>
         {user.role === "ORG_ADMIN" && <NavLink href="/organizations/lists">Өөрийн жагсаалт</NavLink>}
+        {user.role === "ORG_ADMIN" && <NavLink href="/organizations/users">Хэрэглэгчид</NavLink>}
+        {user.role === "ORG_ADMIN" && <NavLink href="/organizations/reports">Тайлан</NavLink>}
+        {user.role === "ORG_ADMIN" && <NavLink href="/organizations/audit">Үйлдлийн түүх</NavLink>}
         {user.role === "ADMIN" && <NavLink href="/managements">Удирдлага</NavLink>}
       </div>
       <UserMenu user={user} />

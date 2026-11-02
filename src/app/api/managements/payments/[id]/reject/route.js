@@ -2,6 +2,7 @@ import { parseBody } from "@/lib/api";
 import { closePayment } from "@/lib/billing/payments";
 import { QpayError } from "@/lib/billing/qpay";
 import { requireAdminApi } from "@/lib/session";
+import { logPaymentReview } from "../../shared";
 import { paymentReviewSchema } from "@/lib/validations";
 
 // Хүлээгдэж буй төлбөрийг татгалзана (банкны шилжүүлэг орж ирээгүй, QPay-ээр төлөөгүй).
@@ -31,6 +32,8 @@ export async function POST(request, ctx) {
     );
   }
   if (!result) return Response.json({ error: "Төлбөр хүлээгдэж буй төлөвт байхгүй байна" }, { status: 409 });
+  if (result === "PAID") await logPaymentReview("payment.confirm", id, session.user, "QPay-ээр төлөгдсөн тул хэрэгжүүлэв");
+  else await logPaymentReview("payment.reject", id, session.user, "татгалзав", { adminNote: data.adminNote, force: data.force });
   return Response.json({
     paid: result === "PAID",
     message: result === "PAID" ? "QPay-ээр төлөгдсөн байсан тул хэрэгжүүллээ" : "Төлбөрийг татгалзлаа",

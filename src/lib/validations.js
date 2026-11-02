@@ -96,8 +96,52 @@ export const operationSchema = z.object({
 });
 
 // Лого нь файл тул multipart form-оос тусад нь шалгана (logoFileError)
+// Утасны дугаар: зай, зураасыг хасаад 8-15 оронтой (олон улсын бол + тэмдэгтэй)
+const phone = (label) =>
+  z
+    .string({ error: `${label} оруулна уу` })
+    .transform((value) => value.replace(/[\s-]/g, ""))
+    .pipe(z.string().regex(/^\+?\d{8,15}$/, { error: `${label} буруу байна` }));
+
+// Хуулийн этгээдийн регистр 7 оронтой тоо
+const registerNumber = z
+  .string({ error: "Регистрийн дугаар оруулна уу" })
+  .trim()
+  .regex(/^\d{7}$/, { error: "Регистрийн дугаар 7 оронтой тоо байна" });
+
+// Бүртгүүлэхдээ шинэ байгууллага үүсгэх (зөвхөн заавал талбарууд, гэрээгүй) эсвэл
+// харилцагчийн дугаараар бүртгэлтэй байгууллагад нэгдэх
+export const registerOrganizationSchema = z.discriminatedUnion(
+  "mode",
+  [
+    z.object({
+      mode: z.literal("create"),
+      name: title("Байгууллагын нэр"),
+      registerNumber,
+      email: emailSchema,
+      phone: phone("Утасны дугаар"),
+    }),
+    z.object({
+      mode: z.literal("join"),
+      customerNumber: z
+        .string({ error: "Харилцагчийн дугаар оруулна уу" })
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z0-9]{10}$/, { error: "Харилцагчийн дугаар 10 тэмдэгт байна" }),
+    }),
+  ],
+  { error: "Байгууллагын мэдээлэл оруулна уу" },
+);
+
 export const organizationSchema = z.object({
   name: title("Нэр"),
+  registerNumber,
+  contractSigned: z.boolean(),
+  address: nullable(z.string().trim().max(300, { error: "Хаяг хэт урт байна" })),
+  email: emailSchema,
+  backupEmail: nullable(emailSchema),
+  phone: phone("Утасны дугаар"),
+  backupPhone: nullable(phone("Нөөц утасны дугаар")),
   operationId: nullable(z.string()),
   status,
 });
@@ -109,6 +153,18 @@ export const referralRateSchema = z.coerce
   .int({ error: "Бүхэл тоо оруулна уу" })
   .min(0, { error: "Хувь 0-50 хооронд байна" })
   .max(50, { error: "Хувь 0-50 хооронд байна" });
+
+// Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо (системийн тохиргоо)
+export const registrationSettingsSchema = z.object({
+  uncontractedUserLimit: z.coerce
+    .number({ error: "Тоо оруулна уу" })
+    .int({ error: "Бүхэл тоо оруулна уу" })
+    .min(1, { error: "1-1000 хооронд байна" })
+    .max(1000, { error: "1-1000 хооронд байна" }),
+});
+
+// Урьсан байгууллагыг урьсан байгууллагад (2-р шат) олгох хувь (системийн тохиргоо)
+export const referralSettingsSchema = z.object({ secondRate: referralRateSchema });
 
 // Байгууллагын лого. SVG-д script агуулагдаж болох тул зөвхөн растер зураг.
 export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -126,6 +182,16 @@ export const manageUserSchema = z.object({
   role: z.enum(["ADMIN", "ORGANIZATION", "ORG_ADMIN"], { error: "Эрх буруу байна" }),
   status,
 });
+
+// Байгууллагын админ өөрийн байгууллагын хэрэглэгчийн эрх, төлөвийг өөрчилнө (ADMIN эрх олгохгүй)
+export const ORG_ROLES = ["ORGANIZATION", "ORG_ADMIN"];
+export const orgManageUserSchema = z.object({
+  role: z.enum(ORG_ROLES, { error: "Эрх буруу байна" }),
+  status,
+});
+
+// Байгууллагын админ хэрэглэгчийн нууц үгийг шинээр тохируулна
+export const setPasswordSchema = z.object({ password });
 
 // ---- Профайл (/profile) ----
 

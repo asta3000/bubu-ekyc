@@ -4,10 +4,11 @@ import { requireOrgAdminApi } from "@/lib/organization-access";
 import { findOwnList, newEntryKeys, toEntryData } from "@/lib/sanctions/custom-lists";
 import { sanctionListEntrySchema } from "@/lib/validations";
 import { LIST_ERRORS } from "../../shared";
+import { logAudit } from "@/lib/audit/log";
 
 // Жагсаалтад бичлэг нэмнэ
 export async function POST(request, ctx) {
-  const { error, organization } = await requireOrgAdminApi();
+  const { error, session, organization } = await requireOrgAdminApi();
   if (error) return error;
 
   const { data, error: invalid } = await parseBody(request, sanctionListEntrySchema);
@@ -23,5 +24,13 @@ export async function POST(request, ctx) {
   });
   // Жагсаалтын "шинэчлэгдсэн" огноо (тулгах хуудсанд харагдана)
   await prisma.sanctionList.update({ where: { id: list.id }, data: { updatedAt: new Date() } });
+  await logAudit({
+    action: "list.entry_create",
+    actor: session.user,
+    organizationId: organization.id,
+    entity: { type: "SanctionEntry", id: entry.id },
+    summary: `"${list.name}" жагсаалтад "${data.name}" бичлэг нэмэв`,
+    metadata: data,
+  });
   return Response.json({ entry }, { status: 201 });
 }

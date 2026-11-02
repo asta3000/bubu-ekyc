@@ -11,10 +11,10 @@ export class PaymentError extends Error {}
 
 // Багц худалдан авах, идэвхжүүлэх transaction. Нэг байгууллагын хүсэлтүүд хэтэвчний
 // түгжээгээр ээлжилдэг тул хүлээх хугацааг (Prisma-ийн анхдагч 5с) уртасгана.
-const LOCKED_TRANSACTION = { maxWait: 15_000, timeout: 30_000 };
+export const LOCKED_TRANSACTION = { maxWait: 15_000, timeout: 30_000 };
 
 // Банкны гүйлгээний утга / QPay sender_invoice_no
-const uniqueReference = async () =>
+export const uniqueReference = async () =>
   `KYC${await uniqueCode(async (code) =>
     Boolean(await prisma.payment.findUnique({ where: { reference: `KYC${code}` }, select: { id: true } })),
   )}`;
@@ -64,14 +64,19 @@ async function withQpayInvoice(payment) {
   }
 }
 
+// Төлбөр хүлээгдэж буй багцын худалдан авалт байгаа эсэх
+export const hasPendingPurchase = async (tx, organizationId) =>
+  Boolean(
+    await tx.payment.findFirst({
+      where: { organizationId, purpose: "PACKAGE_PURCHASE", status: "PENDING" },
+      select: { id: true },
+    }),
+  );
+
 // Төлбөр хүлээгдэж буй багц байвал шинээр авахыг хориглоно. Эс тэгвэл хуучин төлбөр
 // хожим баталгаажихад түүний дараа авсан багцыг дуусгана.
 async function assertNoPendingPurchase(tx, organizationId) {
-  const pending = await tx.payment.findFirst({
-    where: { organizationId, purpose: "PACKAGE_PURCHASE", status: "PENDING" },
-    select: { id: true },
-  });
-  if (pending) {
+  if (await hasPendingPurchase(tx, organizationId)) {
     throw new PaymentError("Төлбөр хүлээгдэж буй багц байна. Эхлээд түүнийг төлөх эсвэл цуцална уу.");
   }
 }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/Badges";
 import { Button, CopyButton } from "@/components/Buttons";
-import { FieldError, Input, Select } from "@/components/Inputs";
+import { Checkbox, FieldError, Input, Select } from "@/components/Inputs";
 import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
@@ -145,6 +145,79 @@ const OrganizationForm = ({ organization, operations, onDone }) => {
         autoFocus
         required
       />
+      {organization?.customerNumber && (
+        <div className="space-y-1">
+          <span className="text-sm font-medium text-gray-700">Харилцагчийн дугаар</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm tracking-wider text-gray-900">{organization.customerNumber}</span>
+            <CopyButton text={organization.customerNumber} />
+          </div>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          label="Регистрийн дугаар"
+          name="registerNumber"
+          defaultValue={organization?.registerNumber ?? ""}
+          inputMode="numeric"
+          pattern="\d{7}"
+          maxLength={7}
+          error={errors.registerNumber}
+          required
+        />
+        <Checkbox
+          label="Гэрээ байгуулсан"
+          name="contractSigned"
+          value="1"
+          defaultChecked={organization?.contractSigned ?? false}
+          error={errors.contractSigned}
+          className="sm:pt-7"
+        />
+      </div>
+      <Input
+        label="Хаяг"
+        name="address"
+        defaultValue={organization?.address ?? ""}
+        placeholder="Заавал биш"
+        maxLength={300}
+        error={errors.address}
+      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          label="Үндсэн и-мэйл"
+          name="email"
+          type="email"
+          defaultValue={organization?.email ?? ""}
+          error={errors.email}
+          required
+        />
+        <Input
+          label="Нөөц и-мэйл"
+          name="backupEmail"
+          type="email"
+          defaultValue={organization?.backupEmail ?? ""}
+          placeholder="Заавал биш"
+          error={errors.backupEmail}
+        />
+        <Input
+          label="Үндсэн утас"
+          name="phone"
+          type="tel"
+          defaultValue={organization?.phone ?? ""}
+          maxLength={20}
+          error={errors.phone}
+          required
+        />
+        <Input
+          label="Нөөц утас"
+          name="backupPhone"
+          type="tel"
+          defaultValue={organization?.backupPhone ?? ""}
+          placeholder="Заавал биш"
+          maxLength={20}
+          error={errors.backupPhone}
+        />
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Select
           label="Үйл ажиллагаа"
@@ -182,8 +255,8 @@ const OrganizationForm = ({ organization, operations, onDone }) => {
           error={errors.referralCode}
         />
         <p className="text-xs text-gray-500">
-          Промо кодын эзэн байгууллага энэ байгууллагын QPay, банкаар төлсөн төлбөрөөс урамшуулал авна. Анхны
-          төлбөр хийгдсэний дараа өөрчлөх боломжгүй.
+          Промо кодын эзэн байгууллага энэ байгууллагын QPay, банкаар төлсөн төлбөрөөс урамшуулал авна. Түүнийг
+          урьсан байгууллага ч Тохиргоо хэсэгт заасан хувиар авна. Анхны төлбөр хийгдсэний дараа өөрчлөх боломжгүй.
         </p>
       </div>
       <FormActions pending={pending} onCancel={onDone} />
@@ -209,13 +282,39 @@ const OrganizationsManager = ({ organizations, operations }) => {
       {organizations.length === 0 ? (
         <EmptyState>Байгууллага бүртгэгдээгүй байна</EmptyState>
       ) : (
-        <Table headers={["", "Нэр", "Үйл ажиллагаа", "Промо код", "Санал болгосон", "Хэрэглэгч", "Төлөв", "Үүсгэсэн", ""]}>
+        <Table headers={["", "Нэр", "Харилцагчийн дугаар", "Регистр", "Холбоо барих", "Гэрээ", "Үйл ажиллагаа", "Промо код", "Санал болгосон", "Хэрэглэгч", "Төлөв", "Үүсгэсэн", ""]}>
           {organizations.map((organization) => (
             <tr key={organization.id}>
               <Cell className="w-12">
                 <LogoImage src={organization.logo} name={organization.name} />
               </Cell>
               <Cell className="font-medium text-gray-900">{organization.name}</Cell>
+              <Cell className="whitespace-nowrap">
+                {organization.customerNumber ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm tracking-wider text-gray-900">{organization.customerNumber}</span>
+                    <CopyButton text={organization.customerNumber} />
+                  </div>
+                ) : (
+                  "—"
+                )}
+              </Cell>
+              <Cell className="text-gray-600">{organization.registerNumber ?? "—"}</Cell>
+              <Cell className="text-gray-600">
+                {organization.email || organization.phone ? (
+                  <>
+                    <div>{organization.email ?? "—"}</div>
+                    <div className="text-xs text-gray-500">{organization.phone ?? "—"}</div>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </Cell>
+              <Cell>
+                <Badge tone={organization.contractSigned ? "green" : "gray"}>
+                  {organization.contractSigned ? "Тийм" : "Үгүй"}
+                </Badge>
+              </Cell>
               <Cell className="text-gray-600">{organization.operation?.name ?? "—"}</Cell>
               <Cell className="whitespace-nowrap">
                 <PromoCode

@@ -14,6 +14,13 @@ const ROLE_RULES = [
   // Байгууллагын өөрийн жагсаалт: зөвхөн ORG_ADMIN (системийн ADMIN ч хандахгүй)
   { prefix: "/organizations/lists", roles: ["ORG_ADMIN"] },
   { prefix: "/api/organizations/lists", roles: ["ORG_ADMIN"] },
+  // Байгууллагын хэрэглэгчдийг удирдах: зөвхөн ORG_ADMIN
+  { prefix: "/organizations/users", roles: ["ORG_ADMIN"] },
+  { prefix: "/api/organizations/users", roles: ["ORG_ADMIN"] },
+  // Байгууллагын тайлан: зөвхөн ORG_ADMIN (системийн ADMIN /managements/reports-оос)
+  { prefix: "/organizations/reports", roles: ["ORG_ADMIN"] },
+  // Байгууллагын үйлдлийн түүх: зөвхөн ORG_ADMIN (системийн ADMIN /managements/audit-аас)
+  { prefix: "/organizations/audit", roles: ["ORG_ADMIN"] },
   { prefix: "/admins", roles: ["ADMIN"] },
   { prefix: "/api/admins", roles: ["ADMIN"] },
   { prefix: "/managements", roles: ["ADMIN"] },

@@ -1,24 +1,35 @@
 import { prisma } from "@/lib/prisma";
 import { fieldError, notDeleted } from "@/lib/api";
 import { uploadLogo } from "@/lib/blob";
+import { DUPLICATE_NAME, DUPLICATE_REGISTER, registerNumberTaken } from "@/lib/organizations";
 import { fieldErrors, logoFileError, organizationSchema, referralRateSchema } from "@/lib/validations";
 
 export const ORGANIZATION_ERRORS = {
   notFound: "Байгууллага олдсонгүй",
-  // Устгагдсан байгууллага ч нэрээ хадгалдаг тул нэр давхцаж болно
-  unique: { field: "name", message: "Энэ нэртэй байгууллага бүртгэлтэй байна" },
+  unique: { field: "name", message: DUPLICATE_NAME },
 };
 
-// Multipart form: name, operationId, status, logo (файл, заавал биш), removeLogo ("1"),
+// Multipart form: name, registerNumber, contractSigned ("1"), address, email, backupEmail, phone,
+// backupPhone, operationId, status, logo (файл, заавал биш), removeLogo ("1"),
 // referralCode (санал болгосон байгууллагын промо код, заавал биш),
 // referralRate (энэ байгууллагын промо кодоор олгох урамшууллын хувь, заавал биш).
+// organizationId: засаж буй байгууллага (шинэ бол null).
 // { data, logo, removeLogo, referralCode, referralRate } эсвэл алдааны { error } Response буцаана.
-export async function parseOrganizationForm(request) {
+export async function parseOrganizationForm(request, organizationId = null) {
   const formData = await request.formData().catch(() => null);
   if (!formData) return { error: fieldError("form", "Хүсэлт буруу байна") };
 
+  // Хоосон зайтай утгыг хоосон гэж үзнэ (заавал биш талбарт null болно)
+  const text = (key) => String(formData.get(key) ?? "").trim() || undefined;
   const parsed = organizationSchema.safeParse({
     name: formData.get("name") ?? undefined,
+    registerNumber: text("registerNumber"),
+    contractSigned: formData.get("contractSigned") === "1",
+    address: text("address"),
+    email: text("email"),
+    backupEmail: text("backupEmail"),
+    phone: text("phone"),
+    backupPhone: text("backupPhone"),
     operationId: formData.get("operationId") ?? undefined,
     status: formData.get("status") ?? undefined,
   });
@@ -36,6 +47,10 @@ export async function parseOrganizationForm(request) {
 
   const operationError = await checkOperation(parsed.data.operationId);
   if (operationError) return { error: operationError };
+
+  if (await registerNumberTaken(parsed.data.registerNumber, organizationId)) {
+    return { error: fieldError("registerNumber", DUPLICATE_REGISTER, 409) };
+  }
 
   // Хоосон бол өөрчлөхгүй (шинэ байгууллагад анхдагч хувь)
   const rateValue = String(formData.get("referralRate") ?? "").trim();

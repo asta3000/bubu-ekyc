@@ -69,6 +69,8 @@ export const verifyPasswordResetToken = (token) => verifySignedToken("password-r
 export const createEmailVerificationToken = (email) =>
   createSignedToken("email-verification", { email }, EMAIL_VERIFICATION_TOKEN_MAX_AGE);
 
+export const EMAIL_VERIFICATION_EXPIRED = "И-мэйл баталгаажуулалтын хугацаа дууссан. Дахин эхлүүлнэ үү.";
+
 // { email } эсвэл null
 export const verifyEmailVerificationToken = (token) =>
   verifySignedToken("email-verification", token);
@@ -81,3 +83,15 @@ export function verifyValueSignature(purpose, value, signature) {
   const actual = Buffer.from(String(signature ?? ""));
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
+
+// Бүртгэлийн эхний алхамд сонгосон байгууллага. Google-ээр бүртгүүлэхэд OAuth-ийн
+// дараах callback руу httpOnly cookie-оор дамжина.
+export const REGISTER_ORGANIZATION_COOKIE = "register-organization";
+export const REGISTER_ORGANIZATION_MAX_AGE = 30 * 60;
+
+export const createRegisterOrganizationToken = (organization) =>
+  createSignedToken("register-organization", { organization }, REGISTER_ORGANIZATION_MAX_AGE);
+
+// Байгууллагын оролт эсвэл null
+export const verifyRegisterOrganizationToken = (token) =>
+  verifySignedToken("register-organization", token)?.organization ?? null;

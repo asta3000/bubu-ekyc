@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { activeBankAccounts } from "@/lib/billing/bank-accounts";
 import { minTopupAmount } from "@/lib/billing/payments";
+import { secondReferralRate } from "@/lib/billing/referrals";
 import { isQpayConfigured } from "@/lib/billing/qpay";
+import { renewExpiredSubscription } from "@/lib/billing/renewals";
 import { activeSubscription } from "@/lib/billing/subscriptions";
 import { getWallet } from "@/lib/billing/wallet";
 import { requireOrganizationPage } from "@/lib/organization-access";
@@ -18,18 +20,32 @@ const PAGE = {
 
 const HISTORY_LIMIT = 30;
 
-// Байгууллагын промо код, түүгээр бүртгүүлсэн байгууллагын тоо, авсан нийт урамшуулал
+// Байгууллагын промо код, түүгээр бүртгүүлсэн (1-р шат) ба тэдгээрийн урьсан (2-р шат)
+// байгууллагын тоо, шат бүрээр авсан урамшуулал
 async function referralSummary(organizationId) {
-  const [promo, referred, earned] = await Promise.all([
+  const notDeletedOrg = { status: { not: "DELETED" } };
+  const [promo, referred, secondReferred, earned, secondRate] = await Promise.all([
     prisma.promo.findFirst({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
       select: { code: true, discount: true },
     }),
-    prisma.organization.count({ where: { referralPromo: { organizationId }, status: { not: "DELETED" } } }),
-    prisma.referralReward.aggregate({ where: { referrerId: organizationId }, _sum: { amount: true }, _count: true }),
+    prisma.organization.count({ where: { referralPromo: { organizationId }, ...notDeletedOrg } }),
+    prisma.organization.count({
+      where: { referralPromo: { organization: { referralPromo: { organizationId } } }, ...notDeletedOrg },
+    }),
+    prisma.referralReward.groupBy({ by: ["level"], where: { referrerId: organizationId }, _sum: { amount: true } }),
+    secondReferralRate(),
   ]);
-  return { promo, referred, earnedAmount: earned._sum.amount ?? 0, earnedCount: earned._count };
+  const earnedAt = (level) => earned.find((row) => row.level === level)?._sum.amount ?? 0;
+  return {
+    promo,
+    referred,
+    secondReferred,
+    secondRate,
+    earnedAmount: earnedAt(1) + earnedAt(2),
+    secondEarnedAmount: earnedAt(2),
+  };
 }
 
 const BillingPage = async () => {
@@ -37,6 +53,8 @@ const BillingPage = async () => {
   const error = accessError ?? (!organization && "Таны бүртгэл байгууллагад холбогдоогүй байна.");
   if (error) return <AccessDenied {...PAGE} error={error} />;
 
+  // Сунгалт хэтэвчнээс суутгах тул үлдэгдлийг уншихаас өмнө
+  await renewExpiredSubscription(organization.id);
   const wallet = await getWallet(organization.id);
   const [subscription, packages, payments, transactions, bankAccounts, minTopup, referral] = await Promise.all([
     activeSubscription(organization.id),

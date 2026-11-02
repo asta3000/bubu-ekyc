@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
-export const SYSTEM_NAME = "e-KYC";
+export const SYSTEM_NAME = "VerdecX";
 
 const SETTINGS_ID = "system";
 

@@ -3,15 +3,20 @@ import { notFound } from "@/lib/api";
 import { requireBillingApi } from "@/lib/billing/access";
 import { closePayment } from "@/lib/billing/payments";
 import { QpayError } from "@/lib/billing/qpay";
+import { formatMoney } from "@/lib/format";
+import { logAudit } from "@/lib/audit/log";
 
 // Хүлээгдэж буй төлбөрөө байгууллага цуцална. QPay-ээр аль хэдийн төлсөн байвал
 // цуцлахын оронд хэрэгжүүлнэ.
 export async function POST(request, ctx) {
-  const { error, organization } = await requireBillingApi();
+  const { error, session, organization } = await requireBillingApi();
   if (error) return error;
 
   const { id } = await ctx.params;
-  const payment = await prisma.payment.findFirst({ where: { id, organizationId: organization.id }, select: { id: true } });
+  const payment = await prisma.payment.findFirst({
+    where: { id, organizationId: organization.id },
+    select: { id: true, amount: true, reference: true },
+  });
   if (!payment) return notFound("Төлбөр олдсонгүй");
 
   let result;
@@ -22,6 +27,15 @@ export async function POST(request, ctx) {
     throw err;
   }
   if (!result) return Response.json({ error: "Төлбөрийг цуцлах боломжгүй" }, { status: 409 });
+  if (result !== "PAID") {
+    await logAudit({
+      action: "billing.payment_cancel",
+      actor: session.user,
+      organizationId: organization.id,
+      entity: { type: "Payment", id },
+      summary: `${formatMoney(payment.amount)} (${payment.reference}) төлбөрийг цуцлав`,
+    });
+  }
   return Response.json({
     paid: result === "PAID",
     message: result === "PAID" ? "Төлбөр аль хэдийн төлөгдсөн тул цуцлаагүй, хэрэгжүүллээ" : "Төлбөрийг цуцаллаа",

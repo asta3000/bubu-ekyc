@@ -90,7 +90,7 @@ const PrintContent = async ({ params }) => {
         <header className="flex items-start justify-between gap-4 border-b-2 border-gray-800 pb-2">
           <div>
             <p className="text-xl font-bold">
-              e-<span className="text-blue-700">KYC</span>
+              Verdec<span className="text-blue-700">X</span>
             </p>
             <p className="text-gray-600">{system.purpose}</p>
           </div>

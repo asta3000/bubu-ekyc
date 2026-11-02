@@ -32,6 +32,15 @@ model Operation {
 model Organization {
   id              String   @id @default(cuid())
   name            String   @unique
+  // Системээс үүсгэх давхардаагүй 10 тэмдэгтийн дугаар (латин том үсэг, тоо холилдсон)
+  customerNumber  String?  @unique
+  registerNumber  String?
+  contractSigned  Boolean  @default(false)
+  address         String?
+  email           String?
+  backupEmail     String?
+  phone           String?
+  backupPhone     String?
   operationId     String?
   // Бүртгүүлэхдээ ашигласан (өөр байгууллагын) промо код. Урамшуулал түүний эзэнд очно.
   referralPromoId String?
@@ -59,6 +68,7 @@ model Organization {
   referralRewardsPaid   ReferralReward[]       @relation("ReferralPaid")
 
   @@index([operationId])
+  @@index([registerNumber])
 }
 
 model Promo {
@@ -521,11 +531,11 @@ model SubscriptionItem {
   id             String @id @default(cuid())
   subscriptionId String
   service        String
-  // Багцын тоо + өмнөх багцаас шилжсэн тоо
   quota          Int
   used           Int    @default(0)
   unitPrice      Int
-  // Үнэ өндөр багц руу шилжихэд өмнөх багцаас нэмэгдсэн үлдэгдэл (quota-д багтсан)
+  // Өмнөх багцаас шилжсэн үлдэгдэл (quota-д багтсан). Одоо шилжүүлэхгүй, хуучин
+  // захиалгуудад л утгатай.
   carriedOver    Int    @default(0)
 
   subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
@@ -619,7 +629,7 @@ model Payment {
   createdBy      User?             @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   reviewedBy     User?             @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   redemption     CouponRedemption?
-  referralReward ReferralReward?
+  referralRewards ReferralReward[]
 
   @@index([organizationId, createdAt])
   @@index([status, method])
@@ -679,6 +689,10 @@ model SystemSetting {
   linkedin    String?
   facebook    String?
   instagram   String?
+  // Урьсан байгууллагыг урьсан байгууллагад (2-р шат) олгох урамшууллын хувь. Хоосон бол 1.
+  referralSecondRate Int?
+  // Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо. Хоосон бол 3.
+  uncontractedUserLimit Int?
   updatedById String?
   updatedAt   DateTime @updatedAt
 }
@@ -699,13 +713,15 @@ model MatchingSetting {
 }
 
 // Санал болголтын урамшуулал: санал болгосон байгууллагын QPay/банкаар орж ирсэн төлбөр
-// бүрээс промо кодын хувиар эзэн байгууллагын хэтэвчинд. Нэг төлбөрөөс нэг л удаа.
+// бүрээс. level 1: промо кодын эзэнд промо кодын хувиар, level 2: түүнийг урьсан
+// байгууллагад системийн тохиргооны хувиар. Нэг төлбөрөөс шат бүрт нэг л удаа.
 model ReferralReward {
   id         String   @id @default(cuid())
-  // Урамшуулал авсан (промо кодын эзэн) ба төлбөр төлсөн байгууллага
+  // Урамшуулал авсан ба төлбөр төлсөн байгууллага
   referrerId String
   referredId String
-  paymentId  String   @unique
+  paymentId  String
+  level      Int      @default(1)
   rate       Int
   amount     Int
   createdAt  DateTime @default(now())
@@ -714,5 +730,43 @@ model ReferralReward {
   referred Organization @relation("ReferralPaid", fields: [referredId], references: [id], onDelete: Cascade)
   payment  Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
+  @@unique([paymentId, level])
   @@index([referrerId, createdAt])
+}
+
+// Үйлдлийн ерөнхий лог (audit trail). Бүтэц нь аль ч үйлчилгээнд тохирохоор уян:
+// action нь "<ангилал>.<үйлдэл>" мөр (organization.update, screening.batch г.м.), шошго нь
+// src/lib/audit/actions.js-д. Хэрэглэгч, бичлэг устсан ч лог хэвээр үлдэхээр хийсэн хүний
+// мэдээллийг хуулбарлан хадгална (relation-гүй).
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  // action-ий эхний хэсэг (шүүлтүүрт)
+  category       String
+  // SUCCESS | FAILURE
+  status         String   @default("SUCCESS")
+  actorId        String?
+  actorEmail     String?
+  actorName      String?
+  actorRole      String?
+  // Үйлдэл хамаарах байгууллага (ORG_ADMIN өөрийн байгууллагынхыг л харна)
+  organizationId String?
+  // Үйлдэл хийгдсэн бичлэг (Organization, User, Package г.м.)
+  entityType     String?
+  entityId       String?
+  // Хүнд уншигдах товч тайлбар
+  summary        String?
+  // Өөрчлөгдсөн талбарууд: { field: { from, to } }
+  changes        Json?
+  // Бусад нарийвчилсан мэдээлэл (зөвхөн системийн админд)
+  metadata       Json?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([organizationId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([category, createdAt])
+  @@index([entityType, entityId])
 }

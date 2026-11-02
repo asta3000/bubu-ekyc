@@ -149,8 +149,9 @@ const CouponField = ({ pkg, applied, onApply, onRemove, error }) => {
   );
 };
 
-// current: одоогийн идэвхтэй багц (үлдэгдэл шилжих эсэхийг тайлбарлахад)
-const PurchaseForm = ({ pkg, current, balance, qpayEnabled, onPayment, onDone }) => {
+// current: одоогийн идэвхтэй багц (үлдэгдэл шилжих эсэхийг тайлбарлахад).
+// renew: идэвхтэй багцаа гараар сунгах (ижил багцыг дахин авах, шинэ хугацаа одооноос эхэлнэ).
+const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPayment, onDone }) => {
   const [coupon, setCoupon] = useState(null);
   const price = coupon?.finalPrice ?? pkg.basePrice;
   const durationDays = coupon?.durationDays ?? pkg.durationDays;
@@ -210,8 +211,8 @@ const PurchaseForm = ({ pkg, current, balance, qpayEnabled, onPayment, onDone })
       ) : null}
       <p className="text-xs text-gray-500">
         {current &&
-          (pkg.basePrice >= current.basePrice
-            ? `"${current.packageName}" багцын үлдсэн тоо шинэ багцад нэмэгдэнэ. `
+          (renew
+            ? `Сунгахад одоогийн багц дуусч, шинэ хугацаа, багцын тоо одооноос эхэлнэ. Одоогийн багцын үлдсэн хоног, ашиглаагүй тоо шилжихгүй. `
             : `Шинэ багц идэвхжихэд "${current.packageName}" багц дуусч, үлдсэн тоо шилжихгүй. `)}
         {pkg.basePrice === 0 && "Суурь үнэгүй тул ашиглах бүрт задгай үнийг хэтэвчнээс төлнө."}
       </p>
@@ -226,13 +227,39 @@ const PurchaseForm = ({ pkg, current, balance, qpayEnabled, onPayment, onDone })
           ]}
         />
       )}
-      <PrimaryButton pending={pending}>{free || method === "WALLET" ? "Идэвхжүүлэх" : "Үргэлжлүүлэх"}</PrimaryButton>
+      <PrimaryButton pending={pending}>
+        {free || method === "WALLET" ? (renew ? "Сунгах" : "Идэвхжүүлэх") : "Үргэлжлүүлэх"}
+      </PrimaryButton>
     </form>
   );
 };
 
+// Хугацаатай багцын автомат сунгалтын мэдээлэл. renewalPackage: идэвхтэй багцын одоогийн
+// нөхцөл (багц идэвхгүй болсон бол null тул сунгагдахгүй).
+const RenewalNotice = ({ subscription, renewalPackage, balance }) => {
+  if (!subscription.expiresAt) return null;
+  if (!renewalPackage) {
+    return <Message error="Энэ багц идэвхгүй болсон тул хугацаа дуусахад автоматаар сунгагдахгүй." />;
+  }
+  const price = renewalPackage.basePrice;
+  if (balance >= price) {
+    return (
+      <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+        Хугацаа дуусахад хэтэвчнээс {formatMoney(price)} суутгаж автоматаар сунгана. Үлдсэн тоо шилжихгүй.
+      </p>
+    );
+  }
+  return (
+    <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      Хугацаа дуусахад хэтэвчинд {formatMoney(price)} байвал автоматаар сунгана. Одоогийн үлдэгдэл хүрэлцэхгүй байна
+      ({formatMoney(price - balance)} дутуу).
+    </p>
+  );
+};
+
 // Идэвхтэй багцын үйлчилгээ бүрийн үлдэгдэл
-const SubscriptionCard = ({ subscription }) => {
+// onRenew: идэвхтэй багцаа одоо гараар сунгах (багц идэвхгүй болсон бол товч гарахгүй)
+const SubscriptionCard = ({ subscription, renewalPackage, balance, onRenew }) => {
   if (!subscription) {
     return (
       <Card title="Идэвхтэй багц">
@@ -247,6 +274,17 @@ const SubscriptionCard = ({ subscription }) => {
       description={`${formatDate(subscription.startsAt)}-с ${subscription.expiresAt ? `${formatDate(subscription.expiresAt)} хүртэл` : "хугацаагүй"}`}
     >
       <div className="space-y-4">
+        {renewalPackage && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2">
+            <p className="text-sm text-gray-600">
+              Багцын тоо дууссан эсвэл хугацаанаас өмнө шинэчлэх бол одоо сунгаж болно.
+            </p>
+            <Button variant="primary" onClick={onRenew}>
+              Сунгах
+            </Button>
+          </div>
+        )}
+        <RenewalNotice subscription={subscription} renewalPackage={renewalPackage} balance={balance} />
         {subscription.items.map((item) => {
           const service = billableService(item.service);
           const remaining = Math.max(0, item.quota - item.used);
@@ -289,7 +327,7 @@ const ReferralCard = ({ referral }) => (
     title="Санал болголт"
     description={
       referral.promo
-        ? `Промо кодоо бусад байгууллагад өгөөрэй. Түүгээр бүртгүүлсэн байгууллагын QPay, банкаар төлсөн төлбөр бүрээс ${referral.promo.discount}% таны хэтэвчинд орно.`
+        ? `Промо кодоо бусад байгууллагад өгөөрэй. Түүгээр бүртгүүлсэн байгууллагын QPay, банкаар төлсөн төлбөр бүрээс ${referral.promo.discount}%, тэдгээрийн урьсан байгууллагын төлбөрөөс ${referral.secondRate}% таны хэтэвчинд орно.`
         : "Танай байгууллагад промо код үүсгээгүй байна. Админд хандана уу."
     }
   >
@@ -301,14 +339,21 @@ const ReferralCard = ({ referral }) => (
           </span>
           <CopyButton text={referral.promo.code} />
         </div>
-        <dl className="flex gap-6 text-sm">
+        <dl className="flex flex-wrap gap-6 text-sm">
           <div>
             <dt className="text-gray-500">Бүртгүүлсэн байгууллага</dt>
             <dd className="text-lg font-semibold">{referral.referred}</dd>
           </div>
           <div>
+            <dt className="text-gray-500">Тэдний урьсан</dt>
+            <dd className="text-lg font-semibold">{referral.secondReferred}</dd>
+          </div>
+          <div>
             <dt className="text-gray-500">Авсан урамшуулал</dt>
             <dd className="text-lg font-semibold text-green-700">{formatMoney(referral.earnedAmount)}</dd>
+            {referral.secondEarnedAmount > 0 && (
+              <dd className="text-xs text-gray-500">үүнээс 2-р шат {formatMoney(referral.secondEarnedAmount)}</dd>
+            )}
           </div>
         </dl>
       </div>
@@ -332,11 +377,18 @@ const BillingClient = ({
   const close = () => setModal(null);
   const showPayment = (id) => setModal({ type: "payment", id });
   const payment = modal?.type === "payment" ? payments.find((item) => item.id === modal.id) : null;
+  // Идэвхтэй багцын одоогийн нөхцөл (сунгалтад). Багц идэвхгүй болсон бол null.
+  const renewalPackage = packages.find((pkg) => pkg.id === subscription?.packageId) ?? null;
 
   return (
     <div className="space-y-6">
       <div className="grid items-start gap-6 lg:grid-cols-[2fr_1fr]">
-        <SubscriptionCard subscription={subscription} />
+        <SubscriptionCard
+          subscription={subscription}
+          renewalPackage={renewalPackage}
+          balance={balance}
+          onRenew={() => setModal({ type: "purchase", pkg: renewalPackage, renew: true })}
+        />
         <Card title="Хэтэвч">
           <p className="text-3xl font-bold text-gray-900">{formatMoney(balance)}</p>
           <p className="text-xs text-gray-500">Багцын тоо дууссаны дараах ашиглалт, багцын суурь үнийг эндээс төлж болно.</p>
@@ -372,9 +424,15 @@ const BillingClient = ({
                 <div className="flex-1">
                   <PackageItems pkg={pkg} />
                 </div>
-                <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg })}>
-                  {pkg.basePrice === 0 ? "Идэвхжүүлэх" : "Худалдаж авах"}
-                </Button>
+                {pkg.id === renewalPackage?.id ? (
+                  <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg, renew: true })}>
+                    Сунгах
+                  </Button>
+                ) : (
+                  <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg })}>
+                    {pkg.basePrice === 0 ? "Идэвхжүүлэх" : "Худалдаж авах"}
+                  </Button>
+                )}
               </Card>
             ))}
           </div>
@@ -443,9 +501,21 @@ const BillingClient = ({
       <Modal open={modal?.type === "topup"} onClose={close} title="Хэтэвч цэнэглэх">
         <TopupForm qpayEnabled={qpayEnabled} minTopup={minTopup} onPayment={showPayment} onDone={close} />
       </Modal>
-      <Modal open={modal?.type === "purchase"} onClose={close} title={modal?.pkg ? `"${modal.pkg.name}" багц` : ""}>
+      <Modal
+        open={modal?.type === "purchase"}
+        onClose={close}
+        title={modal?.pkg ? `"${modal.pkg.name}" багц${modal.renew ? " сунгах" : ""}` : ""}
+      >
         {modal?.pkg && (
-          <PurchaseForm pkg={modal.pkg} current={subscription} balance={balance} qpayEnabled={qpayEnabled} onPayment={showPayment} onDone={close} />
+          <PurchaseForm
+            pkg={modal.pkg}
+            current={subscription}
+            renew={modal.renew}
+            balance={balance}
+            qpayEnabled={qpayEnabled}
+            onPayment={showPayment}
+            onDone={close}
+          />
         )}
       </Modal>
       <Modal open={Boolean(payment)} onClose={close} title="Төлбөр төлөх" className="max-w-2xl">

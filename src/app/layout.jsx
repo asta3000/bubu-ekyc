@@ -2,8 +2,8 @@ import "@/styles/globals.css";
 
 export const metadata = {
   title: {
-    default: "e-KYC — Харилцагчийг таньж мэдэх систем",
-    template: "%s · e-KYC",
+    default: "VerdecX — Харилцагчийг таньж мэдэх систем",
+    template: "%s · VerdecX",
   },
   description:
     "Иргэний үнэмлэх, царай тулгалтаар харилцагчийг баталгаажуулж, НҮБ, ЕХ, OFAC, Их Британийн хоригийн жагсаалттай тулгах систем.",

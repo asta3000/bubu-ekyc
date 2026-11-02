@@ -1,10 +1,12 @@
 import { fieldError, parseBody } from "@/lib/api";
 import { requireBillingApi } from "@/lib/billing/access";
 import { CouponError } from "@/lib/billing/coupons";
+import { PAYMENT_METHODS } from "@/lib/billing/labels";
 import { PaymentError, purchasePackage } from "@/lib/billing/payments";
 import { isQpayConfigured } from "@/lib/billing/qpay";
 import { InsufficientFundsError } from "@/lib/billing/wallet";
 import { purchaseSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit/log";
 
 // Багц худалдаж авах (купонтой байж болно). Хэтэвч / төлөх дүн 0 бол шууд идэвхжинэ,
 // бусад үед төлбөр хүлээнэ.
@@ -23,6 +25,16 @@ export async function POST(request) {
       organizationId: organization.id,
       userId: session.user.id,
       ...data,
+    });
+    await logAudit({
+      action: "billing.purchase",
+      actor: session.user,
+      organizationId: organization.id,
+      entity: { type: "Subscription", id: subscription.id },
+      summary:
+        `"${subscription.packageName}" багц ` +
+        (subscription.status === "ACTIVE" ? "идэвхжүүлэв" : `авахаар төлбөр үүсгэв (${PAYMENT_METHODS[data.method]})`),
+      metadata: { method: data.method, couponCode: data.couponCode, paymentId: payment?.id ?? null },
     });
     return Response.json(
       { active: subscription.status === "ACTIVE", paymentId: payment?.status === "PENDING" ? payment.id : null },

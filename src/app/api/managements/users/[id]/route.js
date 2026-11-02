@@ -2,6 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { fieldError, notDeleted, parseBody, prismaErrorResponse } from "@/lib/api";
 import { requireAdminApi } from "@/lib/session";
 import { manageUserSchema } from "@/lib/validations";
+import { diffChanges, logAudit } from "@/lib/audit/log";
+
+const USER_FIELDS = { role: "эрх", status: "төлөв", organizationId: "байгууллага" };
 
 // Хэрэглэгчийн байгууллага, эрх, төлөвийг өөрчилнө. Хэрэглэгчийн token
 // дараагийн refresh-ээр (ACCESS_TOKEN_MAX_AGE) шинэчлэгдэнэ.
@@ -34,12 +37,28 @@ export async function PATCH(request, ctx) {
     if (!organization) return fieldError("organizationId", "Байгууллага олдсонгүй");
   }
 
+  const before = await prisma.user.findUnique({
+    where: { id },
+    select: { email: true, role: true, status: true, organizationId: true },
+  });
   try {
     const user = await prisma.user.update({
       where: { id, ...notDeleted },
       data,
       select: { id: true },
     });
+    const changes = diffChanges(before, data);
+    // Байгууллага солигдсон бол хоёр байгууллагын лог-д хоёуланд нь харагдана
+    for (const organizationId of new Set([before?.organizationId ?? null, data.organizationId ?? null])) {
+      await logAudit({
+        action: "user.update",
+        actor: session.user,
+        organizationId,
+        entity: { type: "User", id },
+        summary: `${before?.email} хэрэглэгчийн ${Object.keys(changes ?? {}).map((key) => USER_FIELDS[key] ?? key).join(", ") || "мэдээлэл"}-ийг өөрчлөв`,
+        changes,
+      });
+    }
     return Response.json({ user });
   } catch (err) {
     return prismaErrorResponse(err, { notFound: "Хэрэглэгч олдсонгүй" });

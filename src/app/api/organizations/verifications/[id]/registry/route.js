@@ -3,6 +3,7 @@ import { parseBody } from "@/lib/api";
 import { organizationScope, requireOrganizationApi } from "@/lib/organization-access";
 import { XYP_ENABLED, XYP_OPERATIONS, XypError, checkCitizenRegnum, getCitizenIdCardInfo, isXypConfigured } from "@/lib/xyp";
 import { registryCheckSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit/log";
 
 export const maxDuration = 60;
 
@@ -54,5 +55,13 @@ export async function POST(request, ctx) {
     }),
   });
 
+  await logAudit({
+    action: "verification.registry",
+    actor: session.user,
+    organizationId: organization?.id ?? null,
+    entity: { type: "IdentityVerification", id: verification.id },
+    summary: "ХУР-аас иргэний мэдээлэл шалгав",
+    status: results.every((result) => result.status === "fulfilled") ? "SUCCESS" : "FAILURE",
+  });
   return Response.json({ ok: true });
 }

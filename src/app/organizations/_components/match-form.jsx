@@ -7,11 +7,17 @@ import { Card } from "@/components/Cards";
 import { Checkbox, FieldError, Input, Select } from "@/components/Inputs";
 import { Message } from "@/components/Messages";
 import { withOverageConfirm } from "@/lib/billing/client";
-import { sendJson } from "@/lib/fetcher";
+import { sendForm, sendJson } from "@/lib/fetcher";
+import { BatchResults } from "./batch-results";
 import { SUBJECT_LABELS } from "./labels";
 import MatchResults from "./match-results";
 
 const SUBJECT_OPTIONS = Object.entries(SUBJECT_LABELS).map(([value, label]) => ({ value, label }));
+
+const MODES = [
+  { value: "single", label: "Нэг харилцагч" },
+  { value: "batch", label: "Файлаар олноор (xlsx)" },
+];
 const THRESHOLD_VALUES = [70, 75, 80, 85, 90, 95];
 
 // Админы тохируулсан анхны босго жагсаалтад байхгүй бол нэмнэ
@@ -68,6 +74,7 @@ const MatchProgress = ({ value }) => (
 // defaultThreshold: админы онооны тохиргооны анхны босго
 const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 }) => {
   const router = useRouter();
+  const [mode, setMode] = useState("single");
   const [subjectType, setSubjectType] = useState(defaults.subjectType ?? "INDIVIDUAL");
   const [state, setState] = useState({ errors: {} });
   const [pending, setPending] = useState(false);
@@ -76,28 +83,90 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
   const handleSubmit = async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const data = { ...Object.fromEntries(form), sources: form.getAll("sources") };
 
     setPending(true);
-    const result = await withOverageConfirm((payOverage) =>
-      sendJson("/api/organizations/match", "POST", { ...data, payOverage }),
-    );
-    setState(result.ok ? { errors: {}, results: result.results, screeningId: result.id } : { errors: result.errors });
+    let result;
+    if (mode === "batch") {
+      result = await withOverageConfirm((payOverage) => {
+        form.set("payOverage", payOverage ? "1" : "");
+        return sendForm("/api/organizations/match/batch", "POST", form);
+      });
+      setState(result.ok ? { errors: {}, batch: { results: result.results, errors: result.errors } } : { errors: result.errors });
+    } else {
+      const data = { ...Object.fromEntries(form), sources: form.getAll("sources") };
+      result = await withOverageConfirm((payOverage) =>
+        sendJson("/api/organizations/match", "POST", { ...data, payOverage }),
+      );
+      setState(result.ok ? { errors: {}, results: result.results, screeningId: result.id } : { errors: result.errors });
+    }
     setPending(false);
     // Доорх түүхэнд шинэ шалгалт нэмэгдэнэ
     if (result.ok) router.refresh();
   };
 
   const isIndividual = subjectType === "INDIVIDUAL";
+  const thresholdSelect = (
+    <Select
+      label="Тохирлын босго"
+      name="threshold"
+      defaultValue={String(defaultThreshold)}
+      options={thresholdOptions(defaultThreshold)}
+      error={state.errors.threshold}
+    />
+  );
 
   return (
     <div className="space-y-6">
       <Card
         title="Харилцагчийг тулгах"
-        description="Нэр заавал. Төрсөн огноо, улс, бичиг баримтын дугаар оруулбал тохирлыг нарийвчилж, хуурамч тохирлыг багасгана."
+        description={
+          mode === "batch"
+            ? "Загварыг татаж аваад харилцагчдын мэдээллийг мөр бүрт оруулна. Мөр бүр тусдаа тулгалт болж түүхэнд хадгалагдана."
+            : "Нэр заавал. Төрсөн огноо, улс, бичиг баримтын дугаар оруулбал тохирлыг нарийвчилж, хуурамч тохирлыг багасгана."
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="mb-4 inline-grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="tablist">
+          {MODES.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={mode === item.value}
+              onClick={() => {
+                setMode(item.value);
+                setState({ errors: {} });
+              }}
+              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ${
+                mode === item.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <form key={mode} onSubmit={handleSubmit} className="space-y-4">
           <Message error={state.errors.form} />
+          {mode === "batch" ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-1 md:col-span-1 xl:col-span-3">
+                <Input
+                  label="Excel файл (.xlsx)"
+                  name="file"
+                  type="file"
+                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  error={state.errors.file}
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  200 хүртэл мөр, 2MB хүртэл.{" "}
+                  <a href="/api/organizations/match/template" download className="font-medium text-blue-600 hover:underline">
+                    Загвар татах (.xlsx)
+                  </a>
+                </p>
+              </div>
+              {thresholdSelect}
+            </div>
+          ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Select
               label="Төрөл"
@@ -145,14 +214,9 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
               maxLength={100}
               error={state.errors.identifier}
             />
-            <Select
-              label="Тохирлын босго"
-              name="threshold"
-              defaultValue={String(defaultThreshold)}
-              options={thresholdOptions(defaultThreshold)}
-              error={state.errors.threshold}
-            />
+            {thresholdSelect}
           </div>
+          )}
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-gray-700">Жагсаалтууд</legend>
@@ -184,6 +248,7 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
       </Card>
 
       {state.results && <MatchResults results={state.results} screeningId={state.screeningId} />}
+      {state.batch && <BatchResults {...state.batch} />}
     </div>
   );
 };

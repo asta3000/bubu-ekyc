@@ -2,14 +2,18 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { logAuthEvent } from "@/lib/auth-log";
-import { loginSchema } from "@/lib/validations";
+import { createUserWithOrganization } from "@/lib/organizations";
+import { loginSchema, registerOrganizationSchema } from "@/lib/validations";
 import {
   ACCESS_TOKEN_MAX_AGE,
   REFRESH_TOKEN_MAX_AGE,
+  REGISTER_ORGANIZATION_COOKIE,
   nowInSeconds,
   passwordFingerprint,
+  verifyRegisterOrganizationToken,
 } from "@/lib/tokens";
 
 const userSelect = {
@@ -161,26 +165,46 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         return "/login?error=AccountInactive";
       }
 
-      const user = await prisma.user.upsert({
-        where: { email },
+      if (existing) {
         // Баталгаажаагүй бүртгэлийн нууц үгийг өөр хүн тохируулсан байж болзошгүй
         // тул устгана. Хэрэглэгч хүсвэл "Нууц үг сэргээх"-ээр шинээр тохируулна.
-        update: existing?.isEmailVerified
-          ? {}
-          : { isEmailVerified: true, password: null },
-        create: {
-          email,
-          firstName: profile.given_name ?? profile.name ?? email.split("@")[0],
-          lastName: profile.family_name ?? "",
-          // Google холбоо барих мэдээлэл өгөхгүй тул хоосон үлдээнэ
-          contact: "",
-          isEmailVerified: true,
-        },
-        select: { id: true },
-      });
-      if (!existing) {
-        await logAuthEvent({ event: "REGISTER", email, userId: user.id, provider: "google" });
+        if (!existing.isEmailVerified) {
+          await prisma.user.update({ where: { email }, data: { isEmailVerified: true, password: null } });
+        }
+        return true;
       }
+
+      const userData = {
+        email,
+        firstName: profile.given_name ?? profile.name ?? email.split("@")[0],
+        lastName: profile.family_name ?? "",
+        // Google холбоо барих мэдээлэл өгөхгүй тул хоосон үлдээнэ
+        contact: "",
+        isEmailVerified: true,
+      };
+      // Бүртгүүлэх хуудасны 1-р алхамд байгууллага сонгосон бол түүнтэй нь үүсгэнэ
+      // (шинэ байгууллага бол ORG_ADMIN, нэгдсэн бол ORGANIZATION). Үгүй бол байгууллагагүй.
+      const cookieStore = await cookies();
+      const organization = registerOrganizationSchema.safeParse(
+        verifyRegisterOrganizationToken(cookieStore.get(REGISTER_ORGANIZATION_COOKIE)?.value),
+      );
+      let created;
+      try {
+        created = organization.success
+          ? await createUserWithOrganization(organization.data, userData)
+          : { user: await prisma.user.create({ data: userData, select: { id: true } }) };
+      } catch (error) {
+        if (error?.code !== "P2002") throw error;
+        // Зэрэг нэвтрэх оролдлого хэрэглэгчийг аль хэдийн үүсгэсэн бол үргэлжлүүлнэ,
+        // байгууллагын нэр давхардсан бол бүртгэлийн эхний алхам руу буцаана
+        const target = String(error.meta?.target ?? error.message);
+        if (target.includes("email")) return true;
+        created = { error: true };
+      }
+      if (created.error) return "/register?error=organization";
+
+      cookieStore.delete(REGISTER_ORGANIZATION_COOKIE);
+      await logAuthEvent({ event: "REGISTER", email, userId: created.user.id, provider: "google" });
       return true;
     },
     async jwt({ token, user, account, trigger, session }) {

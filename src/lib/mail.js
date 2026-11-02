@@ -27,7 +27,7 @@ function getTransporter() {
 
 const fromAddress = () => {
   const address = process.env.MAIL_FROM || process.env.SMTP_USER;
-  const name = process.env.MAIL_FROM_NAME || "e-KYC";
+  const name = process.env.MAIL_FROM_NAME || "VerdecX";
   return { name, address };
 };
 
@@ -87,7 +87,7 @@ export function renderMessage({ heading, lines, action }) {
       ? `<p style="margin:24px 0"><a href="${escapeHtml(action.url)}" style="background:#2563eb;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${escapeHtml(action.label)}</a></p>`
       : ""
   }
-  <p style="margin-top:32px;font-size:12px;color:#6b7280">e-KYC · Энэ мэдэгдэл автоматаар илгээгдсэн.</p>
+  <p style="margin-top:32px;font-size:12px;color:#6b7280">VerdecX · Энэ мэдэгдэл автоматаар илгээгдсэн.</p>
 </div>`;
   return { text, html };
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/format";
 import { serviceName } from "./services";
+import { renewExpiredSubscription } from "./renewals";
 import { activeSubscription } from "./subscriptions";
 import { InsufficientFundsError, changeBalance } from "./wallet";
 
@@ -21,6 +22,7 @@ export const usageErrorResponse = (error) =>
 
 // Байгууллагын үйлчилгээ ашиглах эрхийн одоогийн байдал (хуудсанд харуулахад)
 export async function serviceAllowance(organizationId, service) {
+  await renewExpiredSubscription(organizationId);
   const subscription = await activeSubscription(organizationId);
   const item = subscription?.items.find((i) => i.service === service);
   if (!subscription || !item) return { subscription: subscription ?? null, item: null };
@@ -40,6 +42,8 @@ export async function serviceAllowance(organizationId, service) {
 export async function consumeService({ organizationId, service, userId, payOverage = false }) {
   if (!organizationId) return null;
 
+  // Хугацаа нь дууссан багцыг хэтэвчнээс сунгах боломжтой бол эхлээд сунгана
+  await renewExpiredSubscription(organizationId);
   const subscription = await activeSubscription(organizationId);
   if (!subscription) {
     throw new UsageError("NO_SUBSCRIPTION", "Идэвхтэй багц байхгүй байна. \"Багц, төлбөр\" хэсгээс багц сонгоно уу.");

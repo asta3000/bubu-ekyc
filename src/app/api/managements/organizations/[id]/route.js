@@ -1,22 +1,27 @@
 import { prisma } from "@/lib/prisma";
 import { fieldError, notDeleted, notFound, prismaErrorResponse } from "@/lib/api";
 import { deleteBlob } from "@/lib/blob";
+import { uniqueCustomerNumber } from "@/lib/customer-number";
 import { uniquePromoCode } from "@/lib/promo";
 import { requireAdminApi } from "@/lib/session";
 import { ORGANIZATION_ERRORS, parseOrganizationForm, referralLocked, resolveReferral, storeLogo } from "../shared";
+import { diffChanges, logAudit } from "@/lib/audit/log";
 
 // Шинэ лого сонгосон эсвэл устгасан бол хуучин файлыг storage-оос устгана
 export async function PATCH(request, ctx) {
-  const { error } = await requireAdminApi();
+  const { error, session } = await requireAdminApi();
   if (error) return error;
 
-  const { data, logo, removeLogo, referralCode, referralRate, error: invalid } = await parseOrganizationForm(request);
+  const { id } = await ctx.params;
+  const { data, logo, removeLogo, referralCode, referralRate, error: invalid } = await parseOrganizationForm(request, id);
   if (invalid) return invalid;
 
-  const { id } = await ctx.params;
   const existing = await prisma.organization.findFirst({
     where: { id, ...notDeleted },
-    select: { logo: true, referralPromoId: true, referralPromo: { select: { code: true } } },
+    include: {
+      referralPromo: { select: { code: true } },
+      promos: { orderBy: { createdAt: "desc" }, take: 1, select: { discount: true } },
+    },
   });
   if (!existing) return notFound(ORGANIZATION_ERRORS.notFound);
 
@@ -40,7 +45,13 @@ export async function PATCH(request, ctx) {
   try {
     const organization = await prisma.organization.update({
       where: { id, ...notDeleted },
-      data: { ...data, logo: logoUrl, referralPromoId: referral.referralPromoId },
+      data: {
+        ...data,
+        logo: logoUrl,
+        referralPromoId: referral.referralPromoId,
+        // Энэ талбар нэмэгдэхээс өмнө бүртгэгдсэн байгууллагад нөхөж үүсгэнэ
+        ...(!existing.customerNumber && { customerNumber: await uniqueCustomerNumber() }),
+      },
       select: { id: true },
     });
     // Урамшууллын хувь байгууллагын бүх промо кодонд; цаашдын төлбөрөөс үйлчилнэ.
@@ -52,6 +63,27 @@ export async function PATCH(request, ctx) {
       }
     }
     if (existing.logo !== logoUrl) await deleteBlob(existing.logo);
+    await logAudit({
+      action: "organization.update",
+      actor: session.user,
+      organizationId: id,
+      entity: { type: "Organization", id },
+      summary: `"${data.name}" байгууллагын мэдээллийг өөрчлөв`,
+      changes: diffChanges(
+        {
+          ...existing,
+          referralCode: existing.referralPromo?.code ?? null,
+          referralRate: existing.promos[0]?.discount ?? null,
+          logo: Boolean(existing.logo),
+        },
+        {
+          ...data,
+          referralCode: referralCode,
+          referralRate: referralRate ?? existing.promos[0]?.discount ?? null,
+          logo: Boolean(logoUrl),
+        },
+      ),
+    });
     return Response.json({ organization });
   } catch (err) {
     if (logo) await deleteBlob(logoUrl);
@@ -61,7 +93,7 @@ export async function PATCH(request, ctx) {
 
 // Soft delete. Байгууллагын хэрэглэгчдийг байгууллагаас салгана.
 export async function DELETE(request, ctx) {
-  const { error } = await requireAdminApi();
+  const { error, session } = await requireAdminApi();
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -70,6 +102,14 @@ export async function DELETE(request, ctx) {
       prisma.user.updateMany({ where: { organizationId: id }, data: { organizationId: null } }),
       prisma.organization.update({ where: { id, ...notDeleted }, data: { status: "DELETED" } }),
     ]);
+    const { name } = await prisma.organization.findUnique({ where: { id }, select: { name: true } });
+    await logAudit({
+      action: "organization.delete",
+      actor: session.user,
+      organizationId: id,
+      entity: { type: "Organization", id },
+      summary: `"${name}" байгууллагыг устгав`,
+    });
     return Response.json({ ok: true });
   } catch (err) {
     return prismaErrorResponse(err, ORGANIZATION_ERRORS);

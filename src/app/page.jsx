@@ -3,6 +3,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ButtonLink } from "@/components/Links";
 import { Logo, LogoMark } from "@/components/Logos";
+import { billableService } from "@/lib/billing/services";
+import { formatMoney } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
 import { SANCTION_SOURCES } from "@/lib/sanctions/sources";
 import { getSystemInfo } from "@/lib/system";
 
@@ -13,6 +16,7 @@ const NAV = [
   { href: "#features", label: "Үйлчилгээ" },
   { href: "#sources", label: "Жагсаалтууд" },
   { href: "#how", label: "Хэрхэн ажилладаг" },
+  { href: "#pricing", label: "Багц" },
 ];
 
 const FEATURES = [
@@ -245,6 +249,87 @@ const How = () => (
   </section>
 );
 
+// Админы идэвхжүүлсэн багцууд. Request бүрт уншдаг тул үнэ өөрчлөгдмөгц шууд харагдана.
+// Идэвхтэй багц байхгүй бол хэсэг өөрөө гарахгүй.
+const PricingContent = async () => {
+  await connection();
+  const packages = await prisma.package.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: [{ basePrice: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      basePrice: true,
+      durationDays: true,
+      items: { select: { service: true, quota: true, unitPrice: true } },
+    },
+  });
+
+  if (!packages.length) return null;
+
+  return (
+    <section id="pricing" className="scroll-mt-16 bg-slate-50 py-20">
+      <div className="mx-auto max-w-6xl space-y-12 px-4">
+        <SectionTitle
+          eyebrow="Багц"
+          title="Хэрэгцээндээ тохирох багцаа сонгоорой"
+          text="Багцад багтсан тоо дууссаны дараа ашиглах бүрт задгай үнээр хэтэвчнээс тооцогдоно."
+        />
+        <div className="flex flex-wrap justify-center gap-6">
+          {packages.map((pkg) => (
+            <div
+              key={pkg.id}
+              className="flex w-full flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-teal-300 hover:shadow-md sm:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
+            >
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-slate-900">{pkg.name}</h3>
+                {pkg.description && <p className="text-sm text-slate-600">{pkg.description}</p>}
+              </div>
+              <p className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold tracking-tight text-slate-900">
+                  {pkg.basePrice > 0 ? formatMoney(pkg.basePrice) : "Үнэгүй"}
+                </span>
+                {pkg.durationDays && <span className="text-sm text-slate-500">/ {pkg.durationDays} хоног</span>}
+              </p>
+              <ul className="flex-1 space-y-3 text-sm text-slate-700">
+                {pkg.items.map((item) => {
+                  const service = billableService(item.service);
+                  return (
+                    <li key={item.service} className="flex gap-2">
+                      <Check />
+                      <span>
+                        <span className="font-medium text-slate-900">{service?.name ?? item.service}</span>
+                        <span className="block text-slate-500">
+                          {pkg.basePrice > 0 && `${item.quota.toLocaleString("en-US")} ${service?.unit ?? ""} багтсан · `}
+                          {pkg.basePrice > 0 ? "дараа нь " : ""}
+                          {formatMoney(item.unitPrice)}/удаа
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+                {pkg.basePrice === 0 && (
+                  <li className="text-xs text-slate-500">Суурь үнэгүй, ашиглах бүрт задгай үнээр төлнө.</li>
+                )}
+              </ul>
+              <ButtonLink href="/register" variant="primary" className="text-center">
+                Эхлэх
+              </ButtonLink>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const Pricing = () => (
+  <Suspense fallback={null}>
+    <PricingContent />
+  </Suspense>
+);
+
 const CONTACT_ICONS = {
   phone:
     "M2.25 6.75c0 8.28 6.72 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.37c0-.52-.35-.97-.85-1.09l-4.42-1.1a1.13 1.13 0 0 0-1.17.42l-.97 1.29a1.13 1.13 0 0 1-1.21.38 12.04 12.04 0 0 1-7.14-7.14 1.13 1.13 0 0 1 .38-1.21l1.29-.97c.36-.27.53-.73.42-1.17l-1.1-4.42a1.13 1.13 0 0 0-1.09-.85H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z",
@@ -291,7 +376,7 @@ const ContactContent = async () => {
   if (!items.length && !socials.length) return null;
 
   return (
-    <section id="contact" className="scroll-mt-16 bg-slate-50 py-20">
+    <section id="contact" className="scroll-mt-16 bg-white py-20">
       <div className="mx-auto max-w-6xl space-y-12 px-4">
         <SectionTitle eyebrow="Холбоо барих" title="Бидэнтэй холбогдох" text={info.purpose} />
         {items.length > 0 && (
@@ -386,7 +471,7 @@ const Footer = () => (
     <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row">
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <LogoMark className="h-6 w-6" />
-        <span>© e-KYC. Бүх эрх хуулиар хамгаалагдсан.</span>
+        <span>© VerdecX. Бүх эрх хуулиар хамгаалагдсан.</span>
       </div>
       <div className="flex gap-6 text-sm text-slate-500">
         {NAV.map((item) => (
@@ -407,6 +492,7 @@ const Home = () => (
       <Features />
       <Sources />
       <How />
+      <Pricing />
       <Contact />
       <Cta />
     </main>

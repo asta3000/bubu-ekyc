@@ -4,6 +4,7 @@ import { uniqueCouponCode } from "@/lib/coupons";
 import { requireAdminApi } from "@/lib/session";
 import { couponSchema } from "@/lib/validations";
 import { COUPON_ERRORS, checkCouponOrganization } from "./shared";
+import { logAudit } from "@/lib/audit/log";
 
 // Купон үүсгэнэ. Код оруулаагүй бол автоматаар үүсгэнэ.
 export async function POST(request) {
@@ -19,6 +20,14 @@ export async function POST(request) {
     const coupon = await prisma.coupon.create({
       data: { ...data, code: data.code ?? (await uniqueCouponCode()), createdById: session.user.id },
       select: { id: true, code: true },
+    });
+    await logAudit({
+      action: "coupon.create",
+      actor: session.user,
+      organizationId: null,
+      entity: { type: "Coupon", id: coupon.id },
+      summary: `"${coupon.code}" купон үүсгэв`,
+      metadata: data,
     });
     return Response.json({ coupon }, { status: 201 });
   } catch (err) {

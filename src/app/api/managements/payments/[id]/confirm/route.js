@@ -1,6 +1,6 @@
 import { completePayment } from "@/lib/billing/payments";
 import { requireAdminApi } from "@/lib/session";
-import { bankTransferOrError } from "../../shared";
+import { bankTransferOrError, logPaymentReview } from "../../shared";
 
 // Банкны шилжүүлэг орж ирснийг админ баталгаажуулна → хэтэвч цэнэглэгдэх / багц идэвхжинэ
 export async function POST(request, ctx) {
@@ -12,5 +12,6 @@ export async function POST(request, ctx) {
   if (notBank) return notBank;
   const done = await completePayment(id, { reviewedById: session.user.id });
   if (!done) return Response.json({ error: "Төлбөр хүлээгдэж буй төлөвт байхгүй байна" }, { status: 409 });
+  await logPaymentReview("payment.confirm", id, session.user, "баталгаажуулав");
   return Response.json({ ok: true });
 }

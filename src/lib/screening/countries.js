@@ -47,3 +47,12 @@ export const countryLabel = (code) => (code ? mongolian.of(code) ?? code : "");
 // Улсыг таних нэрс (нормчилсон)
 export const countryNames = (code) =>
   [...new Set([english.of(code), ...(ALIASES[code] ?? [])].map(normalize).filter(Boolean))];
+
+// Файлаас ирсэн улсыг код болгоно: "MN", "Монгол", "Mongolia". Танихгүй бол null.
+export function countryCode(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  if (CODES.includes(text.toUpperCase())) return text.toUpperCase();
+  const key = normalize(text);
+  return CODES.find((code) => normalize(mongolian.of(code)) === key || countryNames(code).includes(key)) ?? null;
+}

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { parseBody } from "@/lib/api";
 import { requireSessionApi } from "@/lib/session";
 import { profileSchema } from "@/lib/validations";
+import { diffChanges, logAudit } from "@/lib/audit/log";
 
 // Нэвтэрсэн хэрэглэгч овог, нэр, холбоо барих мэдээллээ засна
 export async function PATCH(request) {
@@ -12,7 +13,18 @@ export async function PATCH(request) {
   const { data, error: invalid } = await parseBody(request, profileSchema);
   if (invalid) return invalid;
 
+  const before = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { firstName: true, lastName: true, contact: true },
+  });
   await prisma.user.update({ where: { id: session.user.id }, data });
+  await logAudit({
+    action: "profile.update",
+    actor: session.user,
+    entity: { type: "User", id: session.user.id },
+    summary: "Профайлын мэдээллээ өөрчлөв",
+    changes: diffChanges(before, data),
+  });
   // Token-ийг DB-ээс дахин уншуулж navbar г.м.-д шинэ нэр харагдана
   await unstable_update({});
   return Response.json({ message: "Мэдээлэл хадгалагдлаа" });

@@ -3,10 +3,11 @@ import { notFound } from "@/lib/api";
 import { syncQpayPayment } from "@/lib/billing/payments";
 import { QpayError } from "@/lib/billing/qpay";
 import { requireAdminApi } from "@/lib/session";
+import { logPaymentReview } from "../../shared";
 
 // QPay төлбөрийг гараар шалгах (callback ирээгүй үед)
 export async function POST(request, ctx) {
-  const { error } = await requireAdminApi();
+  const { error, session } = await requireAdminApi();
   if (error) return error;
 
   const { id } = await ctx.params;
@@ -14,6 +15,7 @@ export async function POST(request, ctx) {
   if (!payment) return notFound("Төлбөр олдсонгүй");
   try {
     const paid = await syncQpayPayment(payment);
+    if (paid) await logPaymentReview("payment.check", id, session.user, "QPay-ээс шалгаж хэрэгжүүлэв");
     return Response.json({ paid, message: paid ? "Төлбөр төлөгдсөн" : "Төлбөр хараахан төлөгдөөгүй байна" });
   } catch (err) {
     if (err instanceof QpayError) return Response.json({ error: err.message }, { status: 502 });

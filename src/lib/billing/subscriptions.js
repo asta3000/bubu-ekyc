@@ -50,30 +50,16 @@ export async function addNewServicesToSubscriptions(db, packageId, items) {
 }
 
 // Захиалгыг идэвхжүүлнэ. Байгууллагын өмнөх идэвхтэй багц дуусна (нэг л идэвхтэй багц).
-// Шинэ багцын суурь үнэ өмнөхөөсөө өндөр эсвэл ижил бол өмнөх багцын үйлчилгээ бүрийн
-// үлдсэн тоо шинэ багцад нэмэгдэнэ; бага бол шилжихгүй. Transaction (tx) дотор дуудна.
+// Өмнөх багцын үлдсэн тоо шинэ багцад шилжихгүй (ахиулах, сунгах аль алинд).
+// Transaction (tx) дотор дуудна.
 export async function activateSubscription(tx, subscriptionId) {
   const pending = await tx.subscription.findUnique({ where: { id: subscriptionId }, select: { organizationId: true } });
   if (!pending) return null;
   // Зэрэг идэвхжүүлэлт хоёр идэвхтэй багц үүсгэхээс сэргийлнэ
   await lockWallet(tx, pending.organizationId);
 
-  const subscription = await tx.subscription.findUnique({ where: { id: subscriptionId }, include: { items: true } });
+  const subscription = await tx.subscription.findUnique({ where: { id: subscriptionId } });
   if (subscription.status !== "PENDING") return subscription;
-
-  const previous = await activeSubscription(subscription.organizationId, tx);
-  if (previous && subscription.basePrice >= previous.basePrice) {
-    for (const item of subscription.items) {
-      const old = previous.items.find((i) => i.service === item.service);
-      const remaining = old ? Math.max(0, old.quota - old.used) : 0;
-      if (remaining > 0) {
-        await tx.subscriptionItem.update({
-          where: { id: item.id },
-          data: { quota: { increment: remaining }, carriedOver: remaining },
-        });
-      }
-    }
-  }
 
   const now = new Date();
   await tx.subscription.updateMany({

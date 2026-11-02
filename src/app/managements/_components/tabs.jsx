@@ -11,7 +11,9 @@ const TABS = [
   { href: "/managements/packages", label: "Багц" },
   { href: "/managements/payments", label: "Төлбөр" },
   { href: "/managements/coupons", label: "Купон" },
+  { href: "/managements/reports", label: "Тайлан" },
   { href: "/managements/settings", label: "Тохиргоо" },
+  { href: "/managements/audit", label: "Аудит лог" },
 ];
 
 const ManagementTabs = () => {
