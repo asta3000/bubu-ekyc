@@ -282,7 +282,7 @@ const OrganizationsManager = ({ organizations, operations }) => {
       {organizations.length === 0 ? (
         <EmptyState>Байгууллага бүртгэгдээгүй байна</EmptyState>
       ) : (
-        <Table headers={["", "Нэр", "Харилцагчийн дугаар", "Регистр", "Холбоо барих", "Гэрээ", "Үйл ажиллагаа", "Промо код", "Санал болгосон", "Хэрэглэгч", "Төлөв", "Үүсгэсэн", ""]}>
+        <Table headers={["", "Нэр", "Харилцагчийн дугаар", "Регистр", "Холбоо барих", "Гэрээ", "Багц", "Үйл ажиллагаа", "Промо код", "Санал болгосон", "Хэрэглэгч", "Төлөв", "Үүсгэсэн", ""]}>
           {organizations.map((organization) => (
             <tr key={organization.id}>
               <Cell className="w-12">
@@ -314,6 +314,20 @@ const OrganizationsManager = ({ organizations, operations }) => {
                 <Badge tone={organization.contractSigned ? "green" : "gray"}>
                   {organization.contractSigned ? "Тийм" : "Үгүй"}
                 </Badge>
+              </Cell>
+              <Cell className="whitespace-nowrap">
+                {organization.subscription ? (
+                  <>
+                    <p className="text-gray-900">{organization.subscription.packageName}</p>
+                    <p className="text-xs text-gray-500">
+                      {organization.subscription.expiresAt
+                        ? `${formatDate(organization.subscription.expiresAt)} хүртэл`
+                        : "Хугацаагүй"}
+                    </p>
+                  </>
+                ) : (
+                  <span className="text-gray-400">Багцгүй</span>
+                )}
               </Cell>
               <Cell className="text-gray-600">{organization.operation?.name ?? "—"}</Cell>
               <Cell className="whitespace-nowrap">

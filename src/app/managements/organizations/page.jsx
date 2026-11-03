@@ -28,6 +28,13 @@ const OrganizationsPage = async () => {
         status: true,
         operationId: true,
         createdAt: true,
+        // Одоо хүчинтэй багц (activeSubscription-тэй ижил нөхцөл)
+        subscriptions: {
+          where: { status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+          orderBy: { startsAt: "desc" },
+          take: 1,
+          select: { packageName: true, expiresAt: true },
+        },
         updatedAt: true,
         operation: { select: { name: true } },
         promos: { orderBy: { createdAt: "desc" }, take: 1, select: { code: true, discount: true } },
@@ -47,8 +54,9 @@ const OrganizationsPage = async () => {
       <PageTitle title="Байгууллага" description="KYC үйлчилгээ авах байгууллагууд" />
       <OrganizationsManager
         // Blob-ийн жинхэнэ хаягийг биш, app-ийн API-ийн хаягийг client-д өгнө
-        organizations={organizations.map(({ updatedAt, promos, referralPromo, ...organization }) => ({
+        organizations={organizations.map(({ updatedAt, promos, referralPromo, subscriptions, ...organization }) => ({
           ...organization,
+          subscription: subscriptions[0] ?? null,
           referralCode: referralPromo?.code ?? null,
           referredBy: referralPromo?.organization?.name ?? null,
           logo: organizationLogoSrc({ ...organization, updatedAt }),

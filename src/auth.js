@@ -183,16 +183,19 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         isEmailVerified: true,
       };
       // Бүртгүүлэх хуудасны 1-р алхамд байгууллага сонгосон бол түүнтэй нь үүсгэнэ
-      // (шинэ байгууллага бол ORG_ADMIN, нэгдсэн бол ORGANIZATION). Үгүй бол байгууллагагүй.
+      // (шинэ байгууллага бол ORG_ADMIN, нэгдсэн бол ORGANIZATION). Байгууллагагүй
+      // (1-р алхамыг алгассан эсвэл cookie-ний хугацаа дууссан) бол бүртгэл үүсгэхгүй.
       const cookieStore = await cookies();
       const organization = registerOrganizationSchema.safeParse(
         verifyRegisterOrganizationToken(cookieStore.get(REGISTER_ORGANIZATION_COOKIE)?.value),
       );
+      if (!organization.success) {
+        await logAuthEvent({ event: "LOGIN_FAILED", email, provider: "google", reason: "no_organization" });
+        return "/register?error=no-organization";
+      }
       let created;
       try {
-        created = organization.success
-          ? await createUserWithOrganization(organization.data, userData)
-          : { user: await prisma.user.create({ data: userData, select: { id: true } }) };
+        created = await createUserWithOrganization(organization.data, userData);
       } catch (error) {
         if (error?.code !== "P2002") throw error;
         // Зэрэг нэвтрэх оролдлого хэрэглэгчийг аль хэдийн үүсгэсэн бол үргэлжлүүлнэ,
