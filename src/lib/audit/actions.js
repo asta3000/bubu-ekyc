@@ -66,6 +66,7 @@ export const AUDIT_ACTIONS = {
   "billing.topup": { label: "Хэтэвч цэнэглэх хүсэлт", org: true },
   "billing.payment_cancel": { label: "Төлбөр цуцалсан", org: true },
   "billing.addon_purchase": { label: "Нэмэлт жагсаалт авсан", org: true },
+  "billing.document_email": { label: "Төлбөрийн баримт имэйлээр илгээсэн", org: true },
   "billing.addon_renew_auto": { label: "Нэмэлт жагсаалт автоматаар сунгагдсан", org: true },
   "billing.addon_auto_renew": { label: "Нэмэлт жагсаалтын автомат сунгалт өөрчилсөн", org: true },
   "payment.confirm": { label: "Төлбөр баталгаажуулсан", org: true },

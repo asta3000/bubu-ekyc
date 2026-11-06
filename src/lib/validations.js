@@ -384,6 +384,10 @@ export const addonPurchaseSchema = z.object({
   source: z.enum(ADDON_SOURCE_KEYS, { error: "Нэмэлт жагсаалт сонгоно уу" }),
 });
 
+export const paymentDocumentSchema = z.object({
+  type: z.enum(["invoice", "receipt"], { error: "Баримтын төрөл буруу" }),
+});
+
 export const addonAutoRenewSchema = addonPurchaseSchema.extend({
   autoRenew: z.boolean({ error: "Автомат сунгалтын утга буруу" }),
 });

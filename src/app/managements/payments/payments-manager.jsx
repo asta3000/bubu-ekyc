@@ -111,6 +111,17 @@ const PaymentsManager = ({ payments }) => {
               </Cell>
               <Cell>
                 <PaymentActions payment={payment} submit={submit} pending={pending} onError={setActionError} />
+                {/* Гаднаас орж ирсэн, төлөгдсөн гүйлгээний орлогын баримт (нэг гүйлгээнд нэг) */}
+                {payment.status === "PAID" && payment.method !== "WALLET" && (
+                  <a
+                    href={`/print/payments/${payment.id}?type=income`}
+                    target="_blank"
+                    rel="noopener"
+                    className="block whitespace-nowrap text-right text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Орлогын баримт
+                  </a>
+                )}
               </Cell>
             </tr>
           ))}

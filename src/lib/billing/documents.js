@@ -5,19 +5,38 @@ import { escapeHtml, sendMail } from "@/lib/mail";
 import { getSystemInfo } from "@/lib/system";
 import { signValue, verifyValueSignature } from "@/lib/tokens";
 import { activeBankAccounts } from "./bank-accounts";
-import { PAYMENT_PURPOSES } from "./labels";
+import { paymentPurpose } from "./labels";
 
-// Хэтэвч цэнэглэх нэхэмжлэх ба зарлагын баримт (имэйл). Хоёулаа QR-тай: уншуулахад
-// /verify/payment/<id> хуудас системээс баримтын үнэн бодит байдал, одоогийн төлвийг харуулна.
+// Төлбөрийн баримтууд. Нэг гүйлгээнд (Payment) нэг л нэхэмжлэх, нэг л зарлагын баримт, нэг л
+// орлогын баримт: дугаар нь гүйлгээний утга (reference) тул дахин хэвлэх, илгээхэд ижил баримт гарна.
+//   invoice: нэхэмжлэх (байгууллагад, төлөх заавартай)
+//   receipt: зарлагын баримт (байгууллагад, төлөгдсөний дараа)
+//   income:  орлогын баримт (системийн админд, төлөгдсөний дараа)
+// Бүгд QR-тай: уншуулахад /verify/payment/<id> хуудас баримтын үнэн бодит байдал, төлвийг харуулна.
+// Хэтэвчээр төлсөн (дотоод) гүйлгээнд баримт гарахгүй, гаднаас мөнгө орж ирсэн QPay, банкны л.
 
 const PURPOSE = "payment-document";
+const EXTERNAL_METHODS = ["QPAY", "BANK_TRANSFER"];
+
+export const DOCUMENT_TYPES = {
+  invoice: { title: "НЭХЭМЖЛЭХ", name: "Нэхэмжлэх" },
+  receipt: { title: "ЗАРЛАГЫН БАРИМТ", name: "Зарлагын баримт" },
+  income: { title: "ОРЛОГЫН БАРИМТ", name: "Орлогын баримт" },
+};
+
+// Тухайн гүйлгээнд баримт гаргах боломжтой эсэх (admin: орлогын баримтад)
+export function documentAvailable(payment, type) {
+  if (!EXTERNAL_METHODS.includes(payment.method)) return false;
+  if (type === "invoice") return true;
+  return payment.status === "PAID";
+}
 
 export const paymentVerifyUrl = (paymentId) =>
   `${(process.env.AUTH_URL ?? "").replace(/\/$/, "")}/verify/payment/${paymentId}?s=${signValue(PURPOSE, paymentId)}`;
 
 export const isValidPaymentSignature = (paymentId, signature) => verifyValueSignature(PURPOSE, paymentId, signature);
 
-// Баримтад шаардлагатай бүх мэдээлэлтэй төлбөр (имэйл ба шалгах хуудсанд)
+// Баримтад шаардлагатай бүх мэдээлэлтэй төлбөр (имэйл, хэвлэх, шалгах хуудсанд)
 export async function loadPaymentDocument(id) {
   const payment = await prisma.payment.findUnique({
     where: { id },
@@ -25,6 +44,8 @@ export async function loadPaymentDocument(id) {
       organization: {
         select: { id: true, name: true, registerNumber: true, customerNumber: true, address: true, email: true, phone: true },
       },
+      subscription: { select: { packageName: true } },
+      redemption: { select: { coupon: { select: { code: true } } } },
       createdBy: { select: { firstName: true, lastName: true, email: true } },
       reviewedBy: { select: { firstName: true, lastName: true } },
     },
@@ -41,9 +62,9 @@ export async function loadPaymentDocument(id) {
 // Бодитоор төлсөн хэрэгсэл: админ баталгаажуулсан бол банкны шилжүүлэг, үгүй бол QPay
 export const paidVia = (payment) => (payment.reviewedById || !payment.qpayInvoiceId ? "Банкны шилжүүлэг" : "QPay");
 
-// Нэхэмжлэх хүлээн авагчид: хүсэлт гаргасан хэрэглэгч ба байгууллагын идэвхтэй админууд.
+// Баримт хүлээн авагчид: хүсэлт гаргасан хэрэглэгч ба байгууллагын идэвхтэй админууд.
 // Хэн ч байхгүй бол байгууллагын имэйл.
-async function recipients(payment) {
+export async function documentRecipients(payment) {
   const admins = await prisma.user.findMany({
     where: { organizationId: payment.organizationId, role: "ORG_ADMIN", status: "ACTIVE" },
     select: { email: true },
@@ -73,7 +94,7 @@ const header = (system, title, number, dateLabel, date) => `
     </tr>
   </table>`;
 
-const party = (payment) => {
+const party = (payment, title = null) => {
   const org = payment.organization;
   const rows = [
     ["Байгууллага", org.name],
@@ -84,7 +105,8 @@ const party = (payment) => {
     ["Хүсэлт гаргасан", payment.createdBy ? personName(payment.createdBy) : null],
   ].filter(([, value]) => value);
   return `
-  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px">
+  ${title ? `<div style="margin-top:16px;font-size:12px;font-weight:bold;color:#374151">${e(title)}</div>` : ""}
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:${title ? 4 : 16}px">
     ${rows.map(([key, value]) => `<tr><td style="${label};width:160px;padding:2px 0">${e(key)}</td><td style="font-size:13px;padding:2px 0">${e(value)}</td></tr>`).join("")}
   </table>`;
 };
@@ -96,7 +118,7 @@ const items = (payment, extraRows = []) => `
     </tr>
     <tr>
       <td style="${cell}">1</td>
-      <td style="${cell}">${e(PAYMENT_PURPOSES[payment.purpose] ?? payment.purpose)} (${e(payment.reference)})</td>
+      <td style="${cell}">${e(paymentPurpose(payment))} (${e(payment.reference)})</td>
       <td style="${cell};text-align:right">${e(formatMoney(payment.amount))}</td>
     </tr>
     <tr>
@@ -118,6 +140,24 @@ const verifyBlock = (url, text) => `
     </tr>
   </table>`;
 
+const signatures = (rows) => `
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px">
+    <tr>${rows
+      .map(
+        ([role, name]) => `<td style="width:50%;font-size:12px;padding-right:16px">
+        ${e(role)}: ____________________<br><span style="${label}">${e(name ?? "")}</span>
+      </td>`,
+      )
+      .join("")}</tr>
+  </table>`;
+
+// Цуцлагдсан, татгалзсан нэхэмжлэхийг хэвлэхэд анхааруулна
+const voidBanner = (payment) =>
+  ["CANCELLED", "REJECTED"].includes(payment.status)
+    ? `<p style="margin-top:12px;padding:8px 10px;background:#fee2e2;color:#991b1b;font-size:13px;font-weight:bold">
+        ХҮЧИНГҮЙ: энэ нэхэмжлэх ${payment.status === "CANCELLED" ? "цуцлагдсан" : "татгалзагдсан"}. Төлбөр бүү төлнө үү.</p>`
+    : "";
+
 const layout = (body) => `<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#111827;padding:16px">
   ${body}
   <p style="margin-top:24px;font-size:11px;color:#9ca3af">VerdecX · Энэ баримт системээс автоматаар үүссэн. НӨАТ-ын цахим баримт (e-barimt) биш.</p>
@@ -129,27 +169,33 @@ const qrAttachment = async (url) => ({
   cid: "verify-qr",
 });
 
+const textLines = (lines) => lines.filter((line) => line !== null && line !== undefined).join("\n");
+
 // ---- Нэхэмжлэх ----
 
-export async function renderInvoice(payment) {
+async function renderInvoice(payment) {
   const [system, bankAccounts] = await Promise.all([getSystemInfo(), activeBankAccounts()]);
   const url = paymentVerifyUrl(payment.id);
   const qpay = payment.qpayInvoice ?? null;
+  // Хэтэвч цэнэглэлтийг QPay, банкны аль нэгээр төлж болно. Багцын QPay төлбөрийг зөвхөн QPay-ээр.
+  const bankAllowed = payment.method === "BANK_TRANSFER" || payment.purpose === "WALLET_TOPUP";
   const attachments = [await qrAttachment(url)];
   if (qpay?.qrImage) {
     attachments.push({ filename: "qpay-qr.png", content: Buffer.from(qpay.qrImage, "base64"), cid: "qpay-qr" });
   }
+  const effect = payment.purpose === "WALLET_TOPUP" ? "хэтэвч цэнэглэгдэнэ" : "багц идэвхжинэ";
 
   const qpayBlock = qpay
     ? `
     <td style="width:50%;vertical-align:top;padding:12px;border:1px solid #e5e7eb">
-      <div style="font-weight:bold;margin-bottom:8px">1. QPay-ээр төлөх</div>
+      <div style="font-weight:bold;margin-bottom:8px">${bankAllowed ? "1. " : ""}QPay-ээр төлөх</div>
       ${qpay.qrImage ? `<img src="cid:qpay-qr" width="170" height="170" alt="QPay QR" style="display:block">` : ""}
-      <div style="font-size:12px;color:#374151;margin-top:6px">Банкны аппаараа QR кодыг уншуулна. Төлөгдмөгц хэтэвч автоматаар цэнэглэгдэнэ.</div>
+      <div style="font-size:12px;color:#374151;margin-top:6px">Банкны аппаараа QR кодыг уншуулна. Төлөгдмөгц ${effect}.</div>
       ${qpay.shortUrl ? `<div style="margin-top:6px"><a href="${e(qpay.shortUrl)}" style="color:#2563eb;font-size:12px">${e(qpay.shortUrl)}</a></div>` : ""}
     </td>`
     : "";
-  const bankBlock = `
+  const bankBlock = bankAllowed
+    ? `
     <td style="vertical-align:top;padding:12px;border:1px solid #e5e7eb">
       <div style="font-weight:bold;margin-bottom:8px">${qpay ? "2. " : ""}Банкны шилжүүлгээр төлөх</div>
       ${
@@ -166,63 +212,68 @@ export async function renderInvoice(payment) {
               .join("")
           : `<div style="font-size:12px;color:#b91c1c">Хүлээн авах данс тохируулаагүй байна.</div>`
       }
-      <div style="font-size:12px;background:#fef3c7;padding:6px 8px">Гүйлгээний утгад <b style="font-family:monospace">${e(payment.reference)}</b> гэж заавал бичнэ үү. Админ шалгаж баталгаажуулсны дараа хэтэвч цэнэглэгдэнэ.</div>
-    </td>`;
+      <div style="font-size:12px;background:#fef3c7;padding:6px 8px">Гүйлгээний утгад <b style="font-family:monospace">${e(payment.reference)}</b> гэж заавал бичнэ үү. Админ шалгаж баталгаажуулсны дараа ${effect}.</div>
+    </td>`
+    : "";
 
   const html = layout(`
-    ${header(system, "НЭХЭМЖЛЭХ", payment.reference, "Огноо", payment.createdAt)}
+    ${header(system, DOCUMENT_TYPES.invoice.title, payment.reference, "Огноо", payment.createdAt)}
+    ${voidBanner(payment)}
     ${party(payment)}
     ${items(payment)}
-    <div style="margin-top:20px;font-size:14px;font-weight:bold">Төлбөр төлөх</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border-collapse:collapse"><tr>${qpayBlock}${bankBlock}</tr></table>
+    ${
+      payment.status === "PENDING"
+        ? `<div style="margin-top:20px;font-size:14px;font-weight:bold">Төлбөр төлөх</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border-collapse:collapse"><tr>${qpayBlock}${bankBlock}</tr></table>`
+        : payment.status === "PAID"
+          ? `<p style="margin-top:16px;font-size:13px;padding:8px 10px;background:#ecfdf5;color:#065f46">Төлөгдсөн: ${e(formatDateTime(payment.paidAt))}</p>`
+          : ""
+    }
     ${verifyBlock(url, "QR кодыг утсаараа уншуулж энэ нэхэмжлэх VerdecX системээс гарсан эсэх, төлбөрийн төлвийг шалгана уу.")}
   `);
-  const text = [
+  const text = textLines([
     `НЭХЭМЖЛЭХ № ${payment.reference}`,
     `Байгууллага: ${payment.organization.name}`,
-    `${PAYMENT_PURPOSES[payment.purpose]}: ${formatMoney(payment.amount)}`,
+    `${paymentPurpose(payment)}: ${formatMoney(payment.amount)}`,
     "",
-    qpay?.shortUrl ? `QPay-ээр төлөх: ${qpay.shortUrl}` : null,
-    ...bankAccounts.map((account) => `${account.bankName}: ${account.accountNumber} (${account.accountName})`),
-    `Гүйлгээний утга: ${payment.reference}`,
+    payment.status === "PENDING" && qpay?.shortUrl ? `QPay-ээр төлөх: ${qpay.shortUrl}` : null,
+    ...(payment.status === "PENDING" && bankAllowed
+      ? [...bankAccounts.map((account) => `${account.bankName}: ${account.accountNumber} (${account.accountName})`), `Гүйлгээний утга: ${payment.reference}`]
+      : []),
     "",
     `Баримт шалгах: ${url}`,
-  ]
-    .filter((line) => line !== null)
-    .join("\n");
+  ]);
   return { subject: `Нэхэмжлэх № ${payment.reference}: ${formatMoney(payment.amount)}`, html, text, attachments };
 }
 
-// ---- Зарлагын баримт ----
+// ---- Зарлагын баримт (байгууллагад) ----
 
-export async function renderReceipt(payment) {
+async function renderReceipt(payment) {
   const system = await getSystemInfo();
   const url = paymentVerifyUrl(payment.id);
-  const balance = payment.balanceAfter;
+  const topup = payment.purpose === "WALLET_TOPUP";
   const html = layout(`
-    ${header(system, "ЗАРЛАГЫН БАРИМТ", payment.reference, "Төлсөн огноо", payment.paidAt)}
+    ${header(system, DOCUMENT_TYPES.receipt.title, payment.reference, "Төлсөн огноо", payment.paidAt)}
     ${party(payment)}
     ${items(payment, [
       ["Төлбөрийн хэрэгсэл", paidVia(payment)],
       ["Төлөв", "Төлөгдсөн"],
-      ...(balance != null ? [["Хэтэвчний үлдэгдэл", formatMoney(balance)]] : []),
+      ...(topup && payment.balanceAfter != null ? [["Хэтэвчний үлдэгдэл", formatMoney(payment.balanceAfter)]] : []),
     ])}
     <p style="margin-top:16px;font-size:13px;padding:10px;background:#ecfdf5;color:#065f46">
-      ${e(formatMoney(payment.amount))} төлбөр хүлээн авч, байгууллагын хэтэвч цэнэглэгдлээ.
+      ${e(formatMoney(payment.amount))} төлбөр хүлээн авч, ${topup ? "байгууллагын хэтэвч цэнэглэгдлээ" : "багц идэвхжлээ"}.
     </p>
     ${verifyBlock(url, "QR кодыг утсаараа уншуулж энэ баримт VerdecX системээс гарсан эсэхийг шалгана уу.")}
   `);
-  const text = [
+  const text = textLines([
     `ЗАРЛАГЫН БАРИМТ № ${payment.reference}`,
     `Байгууллага: ${payment.organization.name}`,
-    `${PAYMENT_PURPOSES[payment.purpose]}: ${formatMoney(payment.amount)}`,
+    `${paymentPurpose(payment)}: ${formatMoney(payment.amount)}`,
     `Төлсөн: ${formatDateTime(payment.paidAt)} (${paidVia(payment)})`,
-    balance != null ? `Хэтэвчний үлдэгдэл: ${formatMoney(balance)}` : null,
+    topup && payment.balanceAfter != null ? `Хэтэвчний үлдэгдэл: ${formatMoney(payment.balanceAfter)}` : null,
     "",
     `Баримт шалгах: ${url}`,
-  ]
-    .filter((line) => line !== null)
-    .join("\n");
+  ]);
   return {
     subject: `Зарлагын баримт № ${payment.reference}: ${formatMoney(payment.amount)} төлөгдлөө`,
     html,
@@ -231,22 +282,64 @@ export async function renderReceipt(payment) {
   };
 }
 
-// ---- Илгээх. Имэйл алдаа нь төлбөрийн урсгалыг зогсоохгүй (лог л үлдээнэ). ----
+// ---- Орлогын баримт (системийн админд: мөнгө хүлээн авсныг баталгаажуулна) ----
 
-async function sendDocument(paymentId, render, expected) {
+async function renderIncome(payment) {
+  const system = await getSystemInfo();
+  const url = paymentVerifyUrl(payment.id);
+  const html = layout(`
+    ${header(system, DOCUMENT_TYPES.income.title, payment.reference, "Хүлээн авсан огноо", payment.paidAt)}
+    ${party(payment, "Төлөгч")}
+    ${items(payment, [
+      ["Төлбөрийн хэрэгсэл", paidVia(payment)],
+      ["Хүлээн авсан", system.name],
+      ...(payment.reviewedBy ? [["Баталгаажуулсан", `${personName(payment.reviewedBy)} · ${formatDateTime(payment.reviewedAt)}`]] : []),
+    ])}
+    ${signatures([
+      ["Хүлээн авсан", payment.reviewedBy ? personName(payment.reviewedBy) : null],
+      ["Нягтлан бодогч", null],
+    ])}
+    ${verifyBlock(url, "QR кодыг утсаараа уншуулж энэ гүйлгээ VerdecX системд бүртгэлтэй, төлөгдсөн эсэхийг шалгана уу.")}
+  `);
+  return { subject: `Орлогын баримт № ${payment.reference}`, html, text: "", attachments: [await qrAttachment(url)] };
+}
+
+const RENDERERS = { invoice: renderInvoice, receipt: renderReceipt, income: renderIncome };
+
+export const renderDocument = (type, payment) => RENDERERS[type](payment);
+
+// Хэвлэх хуудсанд: cid зургийг data URI болгож нэг HTML болгоно
+export async function renderDocumentHtml(type, payment) {
+  const { html, attachments } = await renderDocument(type, payment);
+  return attachments.reduce(
+    (out, file) => out.replaceAll(`cid:${file.cid}`, `data:image/png;base64,${file.content.toString("base64")}`),
+    html,
+  );
+}
+
+// ---- Имэйлээр илгээх ----
+
+// Нэхэмжлэх, зарлагын баримтыг байгууллагын хүлээн авагчид илгээнэ. Буцаах: илгээсэн хаягууд
+export async function sendDocument(type, payment) {
+  const to = await documentRecipients(payment);
+  if (!to.length) return [];
+  await sendMail({ to, ...(await renderDocument(type, payment)) });
+  return to;
+}
+
+// Автомат илгээлт (хэтэвч цэнэглэх үед). Алдаа нь төлбөрийн урсгалыг зогсоохгүй (лог л үлдээнэ).
+async function sendAutomatic(paymentId, type) {
   try {
     const payment = await loadPaymentDocument(paymentId);
-    if (!payment || payment.purpose !== "WALLET_TOPUP" || !expected(payment)) return false;
-    const to = await recipients(payment);
-    if (!to.length) return false;
-    await sendMail({ to, ...(await render(payment)) });
-    return true;
+    if (!payment || payment.purpose !== "WALLET_TOPUP" || !documentAvailable(payment, type)) return false;
+    if (type === "invoice" && payment.status !== "PENDING") return false;
+    return (await sendDocument(type, payment)).length > 0;
   } catch (error) {
-    console.error(`[documents] ${paymentId}:`, error.message);
+    console.error(`[documents] ${type} ${paymentId}:`, error.message);
     return false;
   }
 }
 
-export const sendTopupInvoice = (paymentId) => sendDocument(paymentId, renderInvoice, (payment) => payment.status === "PENDING");
+export const sendTopupInvoice = (paymentId) => sendAutomatic(paymentId, "invoice");
 
-export const sendTopupReceipt = (paymentId) => sendDocument(paymentId, renderReceipt, (payment) => payment.status === "PAID");
+export const sendTopupReceipt = (paymentId) => sendAutomatic(paymentId, "receipt");

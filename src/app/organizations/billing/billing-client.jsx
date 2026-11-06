@@ -472,6 +472,42 @@ const AddonsSection = ({ addons, subscription, balance }) => {
   );
 };
 
+// Гадны төлбөрийн (QPay, банк) нэхэмжлэх ба зарлагын баримт: хэвлэх (шинэ цонх) ба имэйлээр
+// дахин илгээх. Нэг гүйлгээнд нэг л баримт тул дугаар нь гүйлгээний утга.
+const EXTERNAL_METHODS = ["QPAY", "BANK_TRANSFER"];
+
+const PaymentDocuments = ({ payment, send, pending }) => {
+  if (!EXTERNAL_METHODS.includes(payment.method)) return null;
+  const documents = [
+    { type: "invoice", label: "Нэхэмжлэх" },
+    ...(payment.status === "PAID" ? [{ type: "receipt", label: "Зарлагын баримт" }] : []),
+  ];
+  const email = (document) => {
+    if (window.confirm(`${document.label} № ${payment.reference}-ийг имэйлээр дахин илгээх үү?`)) {
+      send(`/api/organizations/billing/payments/${payment.id}/documents`, "POST", { type: document.type });
+    }
+  };
+  return (
+    <div className="space-y-0.5 text-xs">
+      {documents.map((document) => (
+        <div key={document.type} className="flex items-center gap-2 whitespace-nowrap">
+          <a
+            href={`/print/payments/${payment.id}?type=${document.type}`}
+            target="_blank"
+            rel="noopener"
+            className="font-medium text-blue-600 hover:underline"
+          >
+            {document.label}
+          </a>
+          <button type="button" onClick={() => email(document)} disabled={pending} className="text-gray-500 hover:text-gray-900 disabled:opacity-50">
+            ✉ имэйл
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const BillingClient = ({
   balance,
   subscription,
@@ -489,6 +525,7 @@ const BillingClient = ({
   const [modal, setModal] = useState(null);
   const close = () => setModal(null);
   const showPayment = (id) => setModal({ type: "payment", id });
+  const documentMail = useSubmit({ refresh: false });
   const payment = modal?.type === "payment" ? payments.find((item) => item.id === modal.id) : null;
   // Идэвхтэй багцын одоогийн нөхцөл (сунгалтад). Багц идэвхгүй болсон бол null.
   const renewalPackage = packages.find((pkg) => pkg.id === subscription?.packageId) ?? null;
@@ -585,6 +622,7 @@ const BillingClient = ({
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <div className="space-y-3">
           <h2 className="text-base font-semibold">Төлбөрүүд</h2>
+          <Message error={documentMail.errors.form} success={documentMail.success} />
           {payments.length === 0 ? (
             <EmptyState>Төлбөр байхгүй</EmptyState>
           ) : (
@@ -604,12 +642,13 @@ const BillingClient = ({
                     <StatusBadge status={item.status} statuses={PAYMENT_STATUSES} />
                     {item.adminNote && <p className="mt-1 max-w-xs text-xs text-gray-500">{item.adminNote}</p>}
                   </Cell>
-                  <Cell>
+                  <Cell className="space-y-1">
                     {item.status === "PENDING" && (
                       <Button variant="link" onClick={() => showPayment(item.id)}>
                         Төлөх
                       </Button>
                     )}
+                    <PaymentDocuments payment={item} send={documentMail.send} pending={documentMail.pending} />
                   </Cell>
                 </tr>
               ))}
