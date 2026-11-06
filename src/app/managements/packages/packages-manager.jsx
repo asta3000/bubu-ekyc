@@ -5,14 +5,14 @@ import { Checkbox, FieldError, Input, Textarea } from "@/components/Inputs";
 import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
-import { BILLABLE_SERVICES, serviceName } from "@/lib/billing/services";
+import { BILLABLE_SERVICES, includesQuota, serviceName } from "@/lib/billing/services";
 import { formatMoney } from "@/lib/format";
 import { FormActions, RowActions, StatusBadge, StatusSelect, Toolbar, useSubmit } from "../_components/ui";
 
 const API = "/api/managements/packages";
 
-// Үйлчилгээ бүрийн мөр: багтах эсэх, суурь үнэд багтах тоо, задгай үнэ
-const ServiceRow = ({ service, item, includesQuota }) => {
+// Үйлчилгээ бүрийн мөр: багтах эсэх, багцад багтах тоо, задгай үнэ
+const ServiceRow = ({ service, item }) => {
   const [enabled, setEnabled] = useState(Boolean(item));
   return (
     <div className="grid items-end gap-3 rounded-lg border border-gray-200 p-3 sm:grid-cols-[1fr_8rem_8rem]">
@@ -28,8 +28,7 @@ const ServiceRow = ({ service, item, includesQuota }) => {
         type="number"
         min={0}
         defaultValue={item?.quota ?? 0}
-        disabled={!enabled || !includesQuota}
-        title={includesQuota ? undefined : "Суурь үнэ 0 үед бүх ашиглалт задгай үнээр"}
+        disabled={!enabled}
       />
       <Input
         label="Задгай үнэ (₮)"
@@ -48,7 +47,6 @@ const ServiceRow = ({ service, item, includesQuota }) => {
 const PackageForm = ({ pkg, onDone }) => {
   const { errors, pending, submit } = useSubmit();
   const [basePrice, setBasePrice] = useState(String(pkg?.basePrice ?? ""));
-  const includesQuota = Number(basePrice) > 0;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -61,8 +59,7 @@ const PackageForm = ({ pkg, onDone }) => {
       status: form.get("status"),
       items: form.getAll("services").map((service) => ({
         service,
-        // Суурь үнэ 0 бол тоо хэрэглэгдэхгүй
-        quota: includesQuota ? form.get(`quota.${service}`) : 0,
+        quota: form.get(`quota.${service}`),
         unitPrice: form.get(`unitPrice.${service}`),
       })),
     };
@@ -100,16 +97,16 @@ const PackageForm = ({ pkg, onDone }) => {
       <div className="space-y-2">
         <p className="text-sm font-medium text-gray-700">Үйлчилгээнүүд</p>
         <p className="text-xs text-gray-500">
-          {includesQuota
+          {Number(basePrice) > 0
             ? "Суурь үнэ төлсний дараа тоогоо байгууллагын ажилтнууд дундаа хэрэглэнэ. Тоо дууссаны дараа ашиглах бүрт задгай үнийг хэтэвчнээс төлнө."
-            : "Суурь үнэ 0 тул бүх ашиглалт задгай үнээр хэтэвчнээс төлөгдөнө."}
+            : "Суурь үнэ 0 үед тоо оруулбал тэр хэмжээгээр үнэгүй ашиглаж, дууссаны дараа задгай үнээр төлнө. Тоо 0 бол бүх ашиглалт задгай үнээр хэтэвчнээс төлөгдөнө."}
+          {" "}Задгай үнэ 0 бол тоо дууссаны дараа ашиглах боломжгүй.
         </p>
         {BILLABLE_SERVICES.map((service) => (
           <ServiceRow
             key={service.key}
             service={service}
             item={pkg?.items.find((item) => item.service === service.key)}
-            includesQuota={includesQuota}
           />
         ))}
         <FieldError error={errors.items} />
@@ -150,7 +147,7 @@ const PackagesManager = ({ packages }) => {
               <Cell className="text-gray-700">
                 {pkg.items.map((item) => (
                   <p key={item.service} className="whitespace-nowrap">
-                    {serviceName(item.service)}: {pkg.basePrice > 0 ? item.quota : "—"} · {formatMoney(item.unitPrice)}
+                    {serviceName(item.service)}: {includesQuota(pkg.basePrice, item.quota) ? item.quota : "—"} · {formatMoney(item.unitPrice)}
                   </p>
                 ))}
               </Cell>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { billableService } from "@/lib/billing/services";
+import { billableService, includesQuota } from "@/lib/billing/services";
 import { serviceAllowance } from "@/lib/billing/usage";
 import { formatMoney } from "@/lib/format";
 
@@ -23,14 +23,18 @@ const ServiceAllowance = async ({ organization, service }) => {
   } else if (!item) {
     tone = "bg-red-50 text-red-700";
     text = <>Таны багцад энэ үйлчилгээ ороогүй. {BILLING_LINK}</>;
-  } else if (subscription.basePrice === 0) {
+  } else if (!includesQuota(subscription.basePrice, item.quota)) {
     text = <>Ашиглах бүрт {formatMoney(item.unitPrice)} хэтэвчнээс төлөгдөнө. {BILLING_LINK}</>;
   } else if (remaining > 0) {
     text = (
       <>
-        Багцаас {remaining} {unit} үлдсэн ({subscription.packageName}). Дууссаны дараа {formatMoney(item.unitPrice)}/удаа.
+        Багцаас {remaining} {unit} үлдсэн ({subscription.packageName}).{" "}
+        {item.unitPrice > 0 ? `Дууссаны дараа ${formatMoney(item.unitPrice)}/удаа.` : "Дууссаны дараа ашиглах боломжгүй."}
       </>
     );
+  } else if (item.unitPrice === 0) {
+    tone = "bg-red-50 text-red-700";
+    text = <>Багцын тоо дууссан тул ашиглах боломжгүй. {BILLING_LINK} хэсгээс багцаа сунгана уу.</>;
   } else {
     tone = "bg-amber-50 text-amber-800";
     text = (

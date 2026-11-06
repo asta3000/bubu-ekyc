@@ -8,6 +8,7 @@ import {
   serviceAllowance,
   usageErrorResponse,
 } from "@/lib/billing/usage";
+import { includesQuota } from "@/lib/billing/services";
 import { formatMoney } from "@/lib/format";
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { BATCH_MAX_SIZE, parseBatchFile } from "@/lib/screening/batch";
@@ -27,14 +28,14 @@ const rowSchema = matchSchema.pick({ name: true, subjectType: true, birthDate: t
 async function overageError(organizationId, count) {
   const { subscription, item, remaining } = await serviceAllowance(organizationId, "SANCTION_SCREENING");
   // Багцгүй, үйлчилгээ ороогүй бол эхний consumeService өөрөө алдаа өгнө
-  if (!subscription || !item || subscription.basePrice === 0 || remaining >= count) return null;
+  if (!subscription || !item || !includesQuota(subscription.basePrice, item.quota) || remaining >= count) return null;
+  // Задгай үнэ 0 бол асуулгүй үлдсэн тоогоор тулгаж, тоо дуусмагц QUOTA_LIMIT-ээр зогсоно
+  if (item.unitPrice === 0) return null;
   const extra = count - remaining;
   return new UsageError(
     "QUOTA_EXHAUSTED",
     `Файлд ${count} мөр байгаа ч багцад ${remaining} тулгалт үлдсэн. ` +
-      (item.unitPrice > 0
-        ? `Үлдсэн ${extra} мөрийг нэг бүр ${formatMoney(item.unitPrice)}-өөр (нийт ${formatMoney(extra * item.unitPrice)}) хэтэвчнээс төлнө.`
-        : `Үлдсэн ${extra} мөрийг үнэгүй тулгана.`),
+      `Үлдсэн ${extra} мөрийг нэг бүр ${formatMoney(item.unitPrice)}-өөр (нийт ${formatMoney(extra * item.unitPrice)}) хэтэвчнээс төлнө.`,
     { unitPrice: item.unitPrice },
   );
 }
@@ -42,7 +43,7 @@ async function overageError(organizationId, count) {
 // xlsx файлын мөр бүрийг хоригийн жагсаалттай тулгаж, тус бүрийг түүхэнд хадгална.
 // Multipart: file, sources (олон), threshold, payOverage ("1").
 // Мөр бүр багцын тооноос (эсвэл задгай үнээр хэтэвчнээс) нэг удаа хасагдана. Хэтэвчний
-// үлдэгдэл дуусвал тэр мөрөөс цааш тулгахгүй.
+// үлдэгдэл, эсвэл задгай үнэгүй багцын тоо дуусвал тэр мөрөөс цааш тулгахгүй.
 export async function POST(request) {
   const { error, session, organization } = await requireOrganizationApi();
   if (error) return error;

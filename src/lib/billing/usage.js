@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/format";
-import { serviceName } from "./services";
+import { includesQuota, serviceName } from "./services";
 import { renewExpiredSubscription } from "./renewals";
 import { activeSubscription } from "./subscriptions";
 import { InsufficientFundsError, changeBalance } from "./wallet";
 
 // Үйлчилгээ ашиглах боломжгүй шалтгаан. code-оор client шийдвэр гаргана:
 // NO_SUBSCRIPTION, SERVICE_NOT_INCLUDED, QUOTA_EXHAUSTED (баталгаажуулбал задгай үнээр),
-// INSUFFICIENT_FUNDS
+// QUOTA_LIMIT (тоо дууссан, задгай үнэгүй тул цааш ашиглахгүй), INSUFFICIENT_FUNDS
 export class UsageError extends Error {
   constructor(code, message, details = {}) {
     super(message);
@@ -26,18 +26,18 @@ export async function serviceAllowance(organizationId, service) {
   const subscription = await activeSubscription(organizationId);
   const item = subscription?.items.find((i) => i.service === service);
   if (!subscription || !item) return { subscription: subscription ?? null, item: null };
-  const includesQuota = subscription.basePrice > 0;
   return {
     subscription,
     item,
-    remaining: includesQuota ? Math.max(0, item.quota - item.used) : 0,
+    remaining: includesQuota(subscription.basePrice, item.quota) ? Math.max(0, item.quota - item.used) : 0,
     unitPrice: item.unitPrice,
   };
 }
 
-// Үйлчилгээг нэг удаа ашиглана. Суурь үнэтэй багцад эхлээд багцын тооноос хасна.
-// Тоо дууссан бол payOverage=true үед л задгай үнээр хэтэвчнээс төлнө (хэрэглэгч
-// баталгаажуулсны дараа). Суурь үнэ 0 бол бүх ашиглалт задгай үнээр шууд хэтэвчнээс.
+// Үйлчилгээг нэг удаа ашиглана. Суурь үнэтэй эсвэл тоо оруулсан үйлчилгээнд эхлээд
+// багцын тооноос хасна. Тоо дууссан бол payOverage=true үед л задгай үнээр хэтэвчнээс
+// төлнө (хэрэглэгч баталгаажуулсны дараа). Задгай үнэ 0 бол тоо дууссаны дараа ашиглуулахгүй.
+// Суурь үнэ 0, тоо 0 бол шууд задгай үнээр.
 // organizationId хоосон (байгууллагагүй админ) бол тооцоолохгүй, null буцаана.
 export async function consumeService({ organizationId, service, userId, payOverage = false }) {
   if (!organizationId) return null;
@@ -55,7 +55,7 @@ export async function consumeService({ organizationId, service, userId, payOvera
 
   const base = { organizationId, subscriptionId: subscription.id, service, userId };
   return prisma.$transaction(async (tx) => {
-    if (subscription.basePrice > 0) {
+    if (includesQuota(subscription.basePrice, item.quota)) {
       // Зэрэг ирсэн хүсэлтүүд тоог хэтрүүлэхгүйн тулд нөхцөлтэйгөөр нэмнэ
       const { count } = await tx.subscriptionItem.updateMany({
         where: { id: item.id, used: { lt: item.quota } },
@@ -63,13 +63,18 @@ export async function consumeService({ organizationId, service, userId, payOvera
       });
       if (count) return tx.serviceUsage.create({ data: { ...base, charge: "QUOTA" } });
 
+      if (item.unitPrice === 0) {
+        throw new UsageError(
+          "QUOTA_LIMIT",
+          `Багцын "${serviceName(service)}" ашиглах тоо (${item.quota}) дууссан. ` +
+            "Цааш ашиглахын тулд \"Багц, төлбөр\" хэсгээс багцаа сунгах эсвэл шинэ багц сонгоно уу.",
+        );
+      }
       if (!payOverage) {
         throw new UsageError(
           "QUOTA_EXHAUSTED",
           `Багцын "${serviceName(service)}" ашиглах тоо (${item.quota}) дууссан тул ашиглах боломжгүй. ` +
-            (item.unitPrice > 0
-              ? `Цааш ашиглавал нэг удаад ${formatMoney(item.unitPrice)} хэтэвчнээс төлөгдөнө.`
-              : "Цааш үнэгүй ашиглах боломжтой."),
+            `Цааш ашиглавал нэг удаад ${formatMoney(item.unitPrice)} хэтэвчнээс төлөгдөнө.`,
           { unitPrice: item.unitPrice },
         );
       }

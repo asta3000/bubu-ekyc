@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ButtonLink } from "@/components/Links";
 import { Logo, LogoMark } from "@/components/Logos";
-import { billableService } from "@/lib/billing/services";
+import { billableService, includesQuota } from "@/lib/billing/services";
 import { formatMoney } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { SANCTION_SOURCES } from "@/lib/sanctions/sources";
@@ -301,16 +301,23 @@ const PricingContent = async () => {
                       <span>
                         <span className="font-medium text-slate-900">{service?.name ?? item.service}</span>
                         <span className="block text-slate-500">
-                          {pkg.basePrice > 0 && `${item.quota.toLocaleString("en-US")} ${service?.unit ?? ""} багтсан · `}
-                          {pkg.basePrice > 0 ? "дараа нь " : ""}
-                          {formatMoney(item.unitPrice)}/удаа
+                          {includesQuota(pkg.basePrice, item.quota) && `${item.quota.toLocaleString("en-US")} ${service?.unit ?? ""} багтсан · `}
+                          {includesQuota(pkg.basePrice, item.quota)
+                            ? item.unitPrice > 0
+                              ? `дараа нь ${formatMoney(item.unitPrice)}/удаа`
+                              : "дараа нь ашиглахгүй"
+                            : `${formatMoney(item.unitPrice)}/удаа`}
                         </span>
                       </span>
                     </li>
                   );
                 })}
                 {pkg.basePrice === 0 && (
-                  <li className="text-xs text-slate-500">Суурь үнэгүй, ашиглах бүрт задгай үнээр төлнө.</li>
+                  <li className="text-xs text-slate-500">
+                    {pkg.items.some((item) => item.quota > 0)
+                      ? "Суурь үнэгүй, багцын тоо дууссаны дараа задгай үнээр төлнө."
+                      : "Суурь үнэгүй, ашиглах бүрт задгай үнээр төлнө."}
+                  </li>
                 )}
               </ul>
               <ButtonLink href="/register" variant="primary" className="text-center">

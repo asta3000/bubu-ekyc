@@ -9,7 +9,7 @@ import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
 import { PAYMENT_METHODS, PAYMENT_STATUSES, WALLET_TRANSACTION_TYPES, paymentPurpose } from "@/lib/billing/labels";
-import { billableService } from "@/lib/billing/services";
+import { billableService, includesQuota } from "@/lib/billing/services";
 import { useSubmit } from "@/lib/use-submit";
 import { formatDate, formatDateTime, formatMoney, personName } from "@/lib/format";
 import PaymentInstructions from "../_components/payment-instructions";
@@ -92,8 +92,9 @@ const PackageItems = ({ pkg }) => (
         <li key={item.service} className="flex justify-between gap-2">
           <span className="text-gray-600">{service?.name ?? item.service}</span>
           <span className="text-right text-gray-900">
-            {pkg.basePrice > 0 && `${item.quota} ${service?.unit ?? ""} · `}
-            {formatMoney(item.unitPrice)}/удаа
+            {includesQuota(pkg.basePrice, item.quota) && `${item.quota} ${service?.unit ?? ""}`}
+            {includesQuota(pkg.basePrice, item.quota) && item.unitPrice > 0 && " · "}
+            {(item.unitPrice > 0 || !includesQuota(pkg.basePrice, item.quota)) && `${formatMoney(item.unitPrice)}/удаа`}
           </span>
         </li>
       );
@@ -214,7 +215,10 @@ const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPay
           (renew
             ? `Сунгахад одоогийн багц дуусч, шинэ хугацаа, багцын тоо одооноос эхэлнэ. Одоогийн багцын үлдсэн хоног, ашиглаагүй тоо шилжихгүй. `
             : `Шинэ багц идэвхжихэд "${current.packageName}" багц дуусч, үлдсэн тоо шилжихгүй. `)}
-        {pkg.basePrice === 0 && "Суурь үнэгүй тул ашиглах бүрт задгай үнийг хэтэвчнээс төлнө."}
+        {pkg.basePrice === 0 &&
+          (pkg.items.some((item) => item.quota > 0)
+            ? "Суурь үнэгүй. Багцын тоо дууссаны дараа ашиглах бүрт задгай үнийг хэтэвчнээс төлнө."
+            : "Суурь үнэгүй тул ашиглах бүрт задгай үнийг хэтэвчнээс төлнө.")}
       </p>
       {!free && (
         <MethodPicker
@@ -267,7 +271,6 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, onRenew }) =>
       </Card>
     );
   }
-  const includesQuota = subscription.basePrice > 0;
   return (
     <Card
       title={subscription.packageName}
@@ -288,17 +291,20 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, onRenew }) =>
         {subscription.items.map((item) => {
           const service = billableService(item.service);
           const remaining = Math.max(0, item.quota - item.used);
+          const hasQuota = includesQuota(subscription.basePrice, item.quota);
           return (
             <div key={item.id} className="space-y-1">
               <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <span className="font-medium text-gray-900">{service?.name ?? item.service}</span>
                 <span className="text-gray-600">
-                  {includesQuota ? `${item.used} / ${item.quota} ашигласан · ` : ""}
+                  {hasQuota ? `${item.used} / ${item.quota} ашигласан · ` : ""}
                   {item.carriedOver > 0 && `(+${item.carriedOver} өмнөх багцаас) · `}
-                  дууссаны дараа {formatMoney(item.unitPrice)}/удаа
+                  {hasQuota && item.unitPrice === 0
+                    ? "дууссаны дараа ашиглахгүй"
+                    : `дууссаны дараа ${formatMoney(item.unitPrice)}/удаа`}
                 </span>
               </div>
-              {includesQuota ? (
+              {hasQuota ? (
                 <>
                   <div className="h-2 rounded-full bg-gray-100">
                     <div
@@ -307,7 +313,11 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, onRenew }) =>
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    {remaining ? `${remaining} ${service?.unit ?? ""} үлдсэн` : "Багцын тоо дууссан — цааш хэтэвчнээс задгай үнээр"}
+                    {remaining
+                      ? `${remaining} ${service?.unit ?? ""} үлдсэн`
+                      : item.unitPrice > 0
+                        ? "Багцын тоо дууссан — цааш хэтэвчнээс задгай үнээр"
+                        : "Багцын тоо дууссан — багцаа сунгана уу"}
                   </p>
                 </>
               ) : (
