@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/format";
 import { includesQuota, serviceName } from "./services";
-import { renewExpiredSubscription } from "./renewals";
+import { awaitingRenewal, renewDue } from "./renewals";
 import { activeSubscription } from "./subscriptions";
 import { InsufficientFundsError, changeBalance } from "./wallet";
 
@@ -22,7 +22,7 @@ export const usageErrorResponse = (error) =>
 
 // Байгууллагын үйлчилгээ ашиглах эрхийн одоогийн байдал (хуудсанд харуулахад)
 export async function serviceAllowance(organizationId, service) {
-  await renewExpiredSubscription(organizationId);
+  await renewDue(organizationId);
   const subscription = await activeSubscription(organizationId);
   const item = subscription?.items.find((i) => i.service === service);
   if (!subscription || !item) return { subscription: subscription ?? null, item: null };
@@ -43,10 +43,16 @@ export async function consumeService({ organizationId, service, userId, payOvera
   if (!organizationId) return null;
 
   // Хугацаа нь дууссан багцыг хэтэвчнээс сунгах боломжтой бол эхлээд сунгана
-  await renewExpiredSubscription(organizationId);
+  await renewDue(organizationId);
   const subscription = await activeSubscription(organizationId);
   if (!subscription) {
-    throw new UsageError("NO_SUBSCRIPTION", "Идэвхтэй багц байхгүй байна. \"Багц, төлбөр\" хэсгээс багц сонгоно уу.");
+    const awaiting = (await awaitingRenewal(organizationId))?.subscription;
+    throw new UsageError(
+      "NO_SUBSCRIPTION",
+      awaiting
+        ? `"${awaiting.packageName}" багцын хугацаа дууссан бөгөөд хэтэвчний үлдэгдэл хүрэлцээгүй тул сунгагдсангүй. Хэтэвчинд ${formatMoney(awaiting.price)}-өөс доошгүй болтол цэнэглэхэд автоматаар сунгагдана.`
+        : "Идэвхтэй багц байхгүй байна. \"Багц, төлбөр\" хэсгээс багц сонгоно уу.",
+    );
   }
   const item = subscription.items.find((i) => i.service === service);
   if (!item) {

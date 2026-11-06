@@ -50,13 +50,39 @@ const xmlParser = new XMLParser({
 
 export const parseXml = (text) => xmlParser.parse(text);
 
-// Эх сурвалжаас татна. Том файлууд тул 2 минутын хугацаа өгнө.
-export async function download(url) {
+// RFC 4180 CSV → мөрүүдийн массив (талбар бүр string). Хашилт доторх таслал, мөр шилжилт,
+// "" (давхар хашилт)-ыг зөв уншина. Эхний BOM-ыг хасна.
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  const input = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (quoted) {
+      if (char !== '"') field += char;
+      else if (input[i + 1] === '"') (field += '"'), i++;
+      else quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") row.push(field), (field = "");
+    else if (char === "\n" || char === "\r") {
+      if (char === "\r" && input[i + 1] === "\n") i++;
+      row.push(field), rows.push(row), (row = []), (field = "");
+    } else field += char;
+  }
+  if (field || row.length) row.push(field), rows.push(row);
+  return rows;
+}
+
+// Эх сурвалжаас татна. Том файлууд тул анхдагчаар 2 минутын хугацаа өгнө.
+// binary: XLSX г.м. файлыг Buffer-ээр буцаана (анхдагчаар текст).
+export async function download(url, { headers = {}, timeout = 120_000, binary = false } = {}) {
   const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; VerdecX sanctions importer)" },
-    signal: AbortSignal.timeout(120_000),
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; VerdecX sanctions importer)", ...headers },
+    signal: AbortSignal.timeout(timeout),
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`${url} татахад алдаа гарлаа (HTTP ${res.status})`);
-  return res.text();
+  return binary ? Buffer.from(await res.arrayBuffer()) : res.text();
 }

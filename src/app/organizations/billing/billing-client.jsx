@@ -48,7 +48,7 @@ function usePaymentRequest(onPayment, onDone) {
 }
 
 // minTopup: цэнэглэх доод дүн (хамгийн хямд багцын үнэ)
-const TopupForm = ({ qpayEnabled, minTopup, onPayment, onDone }) => {
+const TopupForm = ({ qpayEnabled, minTopup, suggested = 0, onPayment, onDone }) => {
   const [method, setMethod] = useState(qpayEnabled ? "QPAY" : "BANK_TRANSFER");
   const { errors, pending, send } = usePaymentRequest(onPayment, onDone);
 
@@ -65,7 +65,7 @@ const TopupForm = ({ qpayEnabled, minTopup, onPayment, onDone }) => {
         name="amount"
         type="number"
         min={minTopup}
-        defaultValue={minTopup}
+        defaultValue={Math.max(minTopup, suggested)}
         error={errors.amount}
         autoFocus
         required
@@ -263,11 +263,17 @@ const RenewalNotice = ({ subscription, renewalPackage, balance }) => {
 
 // Идэвхтэй багцын үйлчилгээ бүрийн үлдэгдэл
 // onRenew: идэвхтэй багцаа одоо гараар сунгах (багц идэвхгүй болсон бол товч гарахгүй)
-const SubscriptionCard = ({ subscription, renewalPackage, balance, onRenew }) => {
+const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, onRenew }) => {
   if (!subscription) {
     return (
       <Card title="Идэвхтэй багц">
-        <Message error="Идэвхтэй багц байхгүй тул үйлчилгээ ашиглах боломжгүй. Доороос багц сонгоно уу." />
+        <Message
+          error={
+            awaiting
+              ? `"${awaiting.packageName}" багцын хугацаа ${formatDate(awaiting.expiresAt)}-нд дууссан. Хэтэвч хүрэлцээгүй тул сунгагдаагүй, үйлчилгээ ашиглах боломжгүй.`
+              : "Идэвхтэй багц байхгүй тул үйлчилгээ ашиглах боломжгүй. Доороос багц сонгоно уу."
+          }
+        />
       </Card>
     );
   }
@@ -371,6 +377,101 @@ const ReferralCard = ({ referral }) => (
   </Card>
 );
 
+// Улсын нэмэлт жагсаалтууд: үндсэн багц дээр хэтэвчнээс худалдаж авна, идэвхтэй бол сунгана
+const AddonsSection = ({ addons, subscription, balance }) => {
+  const { errors, success, pending, send } = useSubmit();
+  const [busy, setBusy] = useState(null);
+
+  const buy = async (addon) => {
+    const action = addon.active ? "сунгах" : "идэвхжүүлэх";
+    const message = `${addon.name}-ийг ${addon.durationDays} хоногоор ${action} уу? Хэтэвчнээс ${formatMoney(addon.price)} хасагдана.`;
+    if (!window.confirm(message)) return;
+    setBusy(addon.key);
+    await send("/api/organizations/billing/addons", "POST", { source: addon.key });
+    setBusy(null);
+  };
+
+  const toggleAutoRenew = async (addon) => {
+    const message = addon.autoRenew
+      ? `${addon.name}-ийн автомат сунгалтыг зогсоох уу? ${formatDate(addon.expiresAt)} хүртэл ашиглах боломжтой, түүнээс хойш сунгагдахгүй.`
+      : `${addon.name}-ийн автомат сунгалтыг сэргээх үү? Хугацаа дуусахад хэтэвчнээс ${formatMoney(addon.price ?? 0)} суутгагдана.`;
+    if (!window.confirm(message)) return;
+    setBusy(addon.key);
+    await send("/api/organizations/billing/addons", "PATCH", { source: addon.key, autoRenew: !addon.autoRenew });
+    setBusy(null);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-base font-semibold">Улсын нэмэлт жагсаалт</h2>
+        <p className="text-sm text-gray-500">
+          Үндсэн багцад НҮБ, ЕХ, АНУ, Их Британи, Дэлхийн банкны жагсаалт багтана. Бусад улсын жагсаалтаар тулгах бол энд идэвхжүүлнэ.
+          Хугацаа дуусахад хэтэвчнээс автоматаар сунгагдана. Зогсоох бол &quot;Автомат сунгалт зогсоох&quot; дарна.
+        </p>
+      </div>
+      <Message error={errors.form} success={success} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {addons.map((addon) => (
+          <Card key={addon.key} className="flex flex-col">
+            <div className="flex-1 space-y-1">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-base font-semibold">{addon.name}</h3>
+                {addon.active ? (
+                  <Badge tone="green">Идэвхтэй</Badge>
+                ) : (
+                  addon.autoRenew && addon.price != null && <Badge tone="amber">Төлбөр хүлээгдэж байна</Badge>
+                )}
+              </div>
+              <p className="text-sm text-gray-500">{addon.description}</p>
+              {addon.active && (
+                <p className="text-xs text-gray-600">
+                  {formatDate(addon.expiresAt)} хүртэл · {addon.autoRenew ? "автоматаар сунгагдана" : "автомат сунгалт зогссон"}
+                </p>
+              )}
+              {!addon.active && addon.autoRenew && addon.price != null && (
+                <p className="text-xs text-amber-700">
+                  Хугацаа {formatDate(addon.expiresAt)}-нд дууссан. Хэтэвч хүрэлцэхэд автоматаар сунгагдана.
+                </p>
+              )}
+              {addon.expiresAt && (
+                <Button variant="link" onClick={() => toggleAutoRenew(addon)} disabled={pending}>
+                  {addon.autoRenew ? "Автомат сунгалт зогсоох" : "Автомат сунгалт сэргээх"}
+                </Button>
+              )}
+            </div>
+            {addon.price == null ? (
+              <p className="text-xs text-gray-500">Одоогоор сунгах боломжгүй</p>
+            ) : (
+              <>
+                <p className="text-xl font-bold">
+                  {formatMoney(addon.price)}
+                  <span className="text-sm font-normal text-gray-500"> / {addon.durationDays} хоног</span>
+                </p>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => buy(addon)}
+                  disabled={pending || !subscription || balance < addon.price}
+                  title={
+                    !subscription
+                      ? "Эхлээд үндсэн багц идэвхжүүлнэ үү"
+                      : balance < addon.price
+                        ? "Хэтэвчний үлдэгдэл хүрэлцэхгүй байна"
+                        : undefined
+                  }
+                >
+                  {busy === addon.key ? "Түр хүлээнэ үү..." : addon.active ? "Сунгах" : "Идэвхжүүлэх"}
+                </Button>
+              </>
+            )}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const BillingClient = ({
   balance,
   subscription,
@@ -381,6 +482,8 @@ const BillingClient = ({
   qpayEnabled,
   minTopup,
   referral,
+  addons,
+  awaiting,
 }) => {
   // { type: "topup" } | { type: "purchase", pkg } | { type: "payment", id }
   const [modal, setModal] = useState(null);
@@ -392,11 +495,39 @@ const BillingClient = ({
 
   return (
     <div className="space-y-6">
+      {awaiting && (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Хэтэвч хүрэлцээгүй тул автомат сунгалт хүлээгдэж байна</p>
+          <ul className="list-inside list-disc">
+            {awaiting.subscription && (
+              <li>
+                &quot;{awaiting.subscription.packageName}&quot; багц — {formatMoney(awaiting.subscription.price)}
+              </li>
+            )}
+            {awaiting.addons.map((addon) => (
+              <li key={addon.source}>
+                {addon.name} — {formatMoney(addon.price)}
+              </li>
+            ))}
+          </ul>
+          <p>
+            Хэтэвч цэнэглэгдмэгц эхлээд багц, дараа нь нэмэлт жагсаалтууд дарааллаар автоматаар сунгагдаж хэвийн
+            ажиллана. Бүгдийг сунгахад {formatMoney(awaiting.total)} шаардлагатай
+            {awaiting.total > balance ? `, ${formatMoney(awaiting.total - balance)} дутуу байна` : ""}.
+          </p>
+          {awaiting.total > balance && (
+            <Button variant="primary" onClick={() => setModal({ type: "topup" })}>
+              Цэнэглэх
+            </Button>
+          )}
+        </div>
+      )}
       <div className="grid items-start gap-6 lg:grid-cols-[2fr_1fr]">
         <SubscriptionCard
           subscription={subscription}
           renewalPackage={renewalPackage}
           balance={balance}
+          awaiting={awaiting?.subscription}
           onRenew={() => setModal({ type: "purchase", pkg: renewalPackage, renew: true })}
         />
         <Card title="Хэтэвч">
@@ -448,6 +579,8 @@ const BillingClient = ({
           </div>
         )}
       </div>
+
+      {addons.length > 0 && <AddonsSection addons={addons} subscription={subscription} balance={balance} />}
 
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <div className="space-y-3">
@@ -509,7 +642,13 @@ const BillingClient = ({
       </div>
 
       <Modal open={modal?.type === "topup"} onClose={close} title="Хэтэвч цэнэглэх">
-        <TopupForm qpayEnabled={qpayEnabled} minTopup={minTopup} onPayment={showPayment} onDone={close} />
+        <TopupForm
+          qpayEnabled={qpayEnabled}
+          minTopup={minTopup}
+          suggested={awaiting ? awaiting.total - balance : 0}
+          onPayment={showPayment}
+          onDone={close}
+        />
       </Modal>
       <Modal
         open={modal?.type === "purchase"}

@@ -220,8 +220,13 @@ const Sources = () => (
           >
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-semibold text-slate-900">{source.name}</h3>
-              <span className="text-slate-300 group-hover:text-teal-500" aria-hidden="true">
-                ↗
+              <span className="flex items-center gap-2">
+                {source.addon && (
+                  <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">Нэмэлт</span>
+                )}
+                <span className="text-slate-300 group-hover:text-teal-500" aria-hidden="true">
+                  ↗
+                </span>
               </span>
             </div>
             <p className="text-sm text-slate-600">{source.description}</p>

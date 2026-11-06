@@ -81,6 +81,17 @@ async function assertNoPendingPurchase(tx, organizationId) {
   }
 }
 
+// Хэтэвчинд мөнгө орсон эсвэл багц идэвхжсэний дараа (transaction commit болсны дараа)
+// хэтэвч хүрэлцээгүйгээс сунгагдаагүй багц, дараа нь нэмэлт жагсаалтуудыг сунгана.
+// Амжилтгүй болсон ч үндсэн үйлдэл хэрэгжсэн хэвээр (дараагийн шалгалтаар дахин оролдоно).
+async function renewAfter(organizationIds) {
+  // renewals.js нь энэ модулийг импортолдог тул тойрог импортоос зайлсхийнэ
+  const { renewDue } = await import("./renewals");
+  for (const organizationId of new Set(organizationIds)) {
+    await renewDue(organizationId).catch((error) => console.error("[renewal]", organizationId, error.message));
+  }
+}
+
 // Идэвхтэй багц байхгүй үеийн цэнэглэх доод дүн
 const FALLBACK_MIN_TOPUP = 1000;
 
@@ -161,16 +172,17 @@ export async function purchasePackage({ organizationId, userId, packageId, metho
     return { subscription: await activateSubscription(tx, subscription.id), payment };
   }, LOCKED_TRANSACTION);
 
-  return result.payment?.status === "PENDING"
-    ? { ...result, payment: await withQpayInvoice(result.payment) }
-    : result;
+  if (result.payment?.status === "PENDING") return { ...result, payment: await withQpayInvoice(result.payment) };
+  // Шууд идэвхжсэн бол идэвхтэй багц шаарддаг, төлбөр хүлээж буй нэмэлт жагсаалтуудыг сунгана
+  await renewAfter([organizationId]);
+  return result;
 }
 
 // Төлбөрийг төлөгдсөн болгож үр дүнг хэрэгжүүлнэ (хэтэвч цэнэглэх / багц идэвхжүүлэх,
 // санал болголтын урамшуулал).
 // Нэг төлбөрийг хоёр удаа хэрэгжүүлэхгүй (PENDING-ээс л шилжинэ). Шилжсэн бол true.
 export async function completePayment(paymentId, { reviewedById = null } = {}) {
-  return prisma.$transaction(async (tx) => {
+  const completed = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const { count } = await tx.payment.updateMany({
       where: { id: paymentId, status: "PENDING" },
@@ -192,9 +204,15 @@ export async function completePayment(paymentId, { reviewedById = null } = {}) {
       await activateSubscription(tx, payment.subscriptionId);
     }
     // Санал болгосон байгууллагад урамшуулал (QPay, банкаар орж ирсэн төлбөрөөс)
-    await grantReferralReward(tx, payment);
-    return true;
+    const rewards = await grantReferralReward(tx, payment);
+    return { payment, referrerIds: rewards.map((item) => item.referrerId) };
   }, LOCKED_TRANSACTION);
+  if (!completed) return false;
+
+  // Цэнэглэлт (хэтэвчинд мөнгө орсон), багц идэвхжсэн (нэмэлт жагсаалтад идэвхтэй багц
+  // шаардлагатай), урамшуулал авсан байгууллагуудын хүлээгдэж буй сунгалтыг шууд хийнэ
+  await renewAfter([completed.payment.organizationId, ...completed.referrerIds]);
+  return true;
 }
 
 // Хүлээгдэж буй төлбөрийг хаана (админ татгалзах / байгууллага цуцлах). Захиалгыг ч цуцалж,

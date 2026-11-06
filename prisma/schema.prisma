@@ -63,6 +63,7 @@ model Organization {
   couponRedemptions     CouponRedemption[]
   screeningPrints       ScreeningPrint[]
   sanctionLists         SanctionList[]
+  addons                OrganizationAddon[]
   referralPromo         Promo?                 @relation("Referral", fields: [referralPromoId], references: [id], onDelete: SetNull)
   referralRewardsEarned ReferralReward[]       @relation("ReferralEarned")
   referralRewardsPaid   ReferralReward[]       @relation("ReferralPaid")
@@ -181,6 +182,13 @@ enum SANCTION_SOURCE {
   OFAC_NON_SDN
   US_CSL
   EU_833_XLV
+  WORLD_BANK
+  // Улсын нэмэлт жагсаалтууд (add-on): байгууллага тусад нь худалдаж авна
+  CA_SEMA
+  FR_GELS
+  CH_SECO
+  JP_MOF
+  AU_DFAT
   // Байгууллагын өөрийн жагсаалт (SanctionEntry.listId-тэй)
   CUSTOM
 }
@@ -493,6 +501,37 @@ model PackageItem {
   @@unique([packageId, service])
 }
 
+// Улсын нэмэлт жагсаалтын (add-on) үнэ. Админ /managements/packages-ээс тохируулна.
+// ACTIVE үед л байгууллага худалдаж авна.
+model SourceAddon {
+  source       SANCTION_SOURCE @id
+  price        Int
+  durationDays Int
+  status       STATUS          @default(INACTIVE)
+  updatedAt    DateTime        @updatedAt
+}
+
+// Байгууллагын худалдаж авсан нэмэлт жагсаалт. Үнийг худалдан авах үеийнхээр хадгална.
+// Хугацаа дуусаагүй (expiresAt > одоо) мөр байвал тухайн жагсаалтаар тулгаж болно.
+// Сунгавал өмнөх хугацааны төгсгөлөөс эхэлсэн шинэ мөр үүснэ.
+model OrganizationAddon {
+  id             String          @id @default(cuid())
+  organizationId String
+  source         SANCTION_SOURCE
+  price          Int
+  startsAt       DateTime
+  expiresAt      DateTime
+  // Хугацаа дуусахад хэтэвчнээс автоматаар сунгах эсэх. Жагсаалт бүрийн хамгийн сүүлийн
+  // хугацааны мөрийнх хүчинтэй. Байгууллага "Автомат сунгалт зогсоох" дарвал false.
+  autoRenew      Boolean         @default(true)
+  createdById    String?
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, expiresAt])
+}
+
 enum SUBSCRIPTION_STATUS {
   // Суурь үнийн төлбөр хүлээгдэж байна
   PENDING
@@ -563,6 +602,8 @@ enum WALLET_TRANSACTION_TYPE {
   ADJUSTMENT
   // Санал болгосон байгууллагын төлбөрөөс олгосон урамшуулал
   REFERRAL_BONUS
+  // Нэмэлт жагсаалт (add-on) худалдан авалт
+  ADDON_PURCHASE
 }
 
 // Хэтэвчний гүйлгээ. amount нэмэх (орлого) эсвэл хасах (зарлага) утгатай

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { allowedSources } from "@/lib/billing/addons";
 import { formatDate } from "@/lib/format";
 import { countryOptions } from "@/lib/screening/countries";
 import { getMatchingConfig } from "@/lib/screening/matching-settings";
@@ -14,13 +15,15 @@ export const metadata = { title: "Хориг тулгах" };
 
 const PAGE = {
   title: "Хоригийн жагсаалттай тулгах",
-  description: "Харилцагч НҮБ, ЕХ, АНУ, Их Британийн болон байгууллагынхаа өөрийн хоригийн жагсаалтад орсон эсэхийг шалгана.",
+  description:
+    "Харилцагч НҮБ, ЕХ, АНУ, Их Британи, Дэлхийн банк, идэвхжүүлсэн улсын нэмэлт болон байгууллагынхаа өөрийн хоригийн жагсаалтад орсон эсэхийг шалгана.",
 };
 
 const HISTORY_LIMIT = 30;
 
-// Жагсаалт бүрийн бичлэгийн тоо, сүүлд шинэчлэгдсэн (амжилттай импортолсон) огноо
-async function sourceStats() {
+// Жагсаалт бүрийн бичлэгийн тоо, сүүлд шинэчлэгдсэн (амжилттай импортолсон) огноо.
+// Идэвхжүүлээгүй нэмэлт жагсаалт locked болж сонгох боломжгүй харагдана.
+async function sourceStats(allowed) {
   const [counts, imports] = await Promise.all([
     prisma.sanctionEntry.groupBy({ by: ["source"], _count: { _all: true } }),
     prisma.sanctionImport.findMany({
@@ -30,11 +33,13 @@ async function sourceStats() {
       select: { source: true, startedAt: true },
     }),
   ]);
-  return SANCTION_SOURCES.map(({ key, name }) => {
+  return SANCTION_SOURCES.map(({ key, name, addon }) => {
     const updatedAt = imports.find((row) => row.source === key)?.startedAt;
     return {
       key,
       name,
+      addon: Boolean(addon),
+      locked: !allowed.has(key),
       count: counts.find((row) => row.source === key)?._count._all ?? 0,
       updatedAt: updatedAt ? formatDate(updatedAt) : null,
     };
@@ -59,7 +64,7 @@ const MatchPage = async ({ searchParams }) => {
 
   const isAdmin = session.user.role === "ADMIN";
   const [sources, customSources, screenings, matching] = await Promise.all([
-    sourceStats(),
+    allowedSources(session, organization).then(sourceStats),
     isAdmin ? [] : customSourceStats(organization.id),
     prisma.screening.findMany({
       where: organizationScope(session, organization),

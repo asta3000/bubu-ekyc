@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { parseAustralia } from "./parsers/australia";
+import { parseCanada } from "./parsers/canada";
 import { parseCsl } from "./parsers/csl";
 import { parseEu } from "./parsers/eu";
 import { parseEu833 } from "./parsers/eu-833";
+import { parseFrance } from "./parsers/france";
+import { parseJapan } from "./parsers/japan";
 import { parseOfac } from "./parsers/ofac";
+import { parseSeco } from "./parsers/seco";
 import { parseUk } from "./parsers/uk";
 import { parseUn } from "./parsers/un";
+import { parseWorldBank } from "./parsers/worldbank";
 import { sanctionSource } from "./sources";
 import { download } from "./utils";
 
@@ -17,7 +23,36 @@ const PARSERS = {
   UK: parseUk,
   US_CSL: parseCsl,
   EU_833_XLV: parseEu833,
+  WORLD_BANK: parseWorldBank,
+  CA_SEMA: parseCanada,
+  FR_GELS: parseFrance,
+  CH_SECO: parseSeco,
+  JP_MOF: parseJapan,
+  AU_DFAT: parseAustralia,
 };
+
+// Эх сурвалжийн татах тохиргоо. Дэлхийн банкны API нь тэдний вэб хуудсанд нээлттэй
+// байгаа apikey шаарддаг (солигдвол WORLD_BANK_API_KEY-ээр өгнө). Францын сервер удаан
+// (15MB ~2.5 минут), SECO-ийн файл том (~45MB) тул хугацааг уртасгана.
+const DOWNLOAD_OPTIONS = {
+  WORLD_BANK: { headers: { apikey: process.env.WORLD_BANK_API_KEY || "z9duUaFUiEUYSHs97CU38fcZO7ipOPvm" } },
+  FR_GELS: { timeout: 270_000 },
+  CH_SECO: { timeout: 240_000 },
+  AU_DFAT: { binary: true },
+};
+
+// Тогтмол URL-гүй эх сурвалж: хуудаснаас хамгийн сүүлийн файлын линкийг олно.
+// Японы MOF файлын нэрэнд огноо оруулдаг (shisantouketsu20261105.csv).
+const RESOLVE_URL = {
+  JP_MOF: async (pageUrl) => {
+    const links = [...(await download(pageUrl)).matchAll(/href="([^"]*shisantouketsu(\d{8})\.csv)"/g)];
+    const latest = links.sort((a, b) => b[2].localeCompare(a[2]))[0];
+    if (!latest) throw new Error("Японы жагсаалтын CSV линк хуудаснаас олдсонгүй. Хуудасны бүтэц өөрчлөгдсөн байж магадгүй.");
+    return new URL(latest[1], pageUrl).href;
+  },
+};
+
+const sourceUrl = (source) => RESOLVE_URL[source.key]?.(source.url) ?? source.url;
 
 // Үүнээс удаан RUNNING байгаа импортыг тасарсан гэж үзнэ
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -72,7 +107,9 @@ export async function importSanctions(sourceKey, userId = null) {
 
   try {
     // url-гүй эх сурвалж (EU_833_XLV) өгөгдлөө кодоос уншина
-    const parsed = PARSERS[source.key](source.url ? await download(source.url) : null);
+    const parsed = await PARSERS[source.key](
+      source.url ? await download(await sourceUrl(source), DOWNLOAD_OPTIONS[source.key]) : null,
+    );
     const { records, contentHash } = prepare(parsed.records, source.key);
     if (records.length === 0) throw new Error("Жагсаалтаас бичлэг олдсонгүй. Файлын бүтэц өөрчлөгдсөн байж магадгүй.");
 

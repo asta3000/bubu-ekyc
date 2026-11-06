@@ -3,10 +3,11 @@ import { activeBankAccounts } from "@/lib/billing/bank-accounts";
 import { minTopupAmount } from "@/lib/billing/payments";
 import { secondReferralRate } from "@/lib/billing/referrals";
 import { isQpayConfigured } from "@/lib/billing/qpay";
-import { renewExpiredSubscription } from "@/lib/billing/renewals";
+import { awaitingRenewal, latestAddons, renewDue } from "@/lib/billing/renewals";
 import { activeSubscription } from "@/lib/billing/subscriptions";
 import { getWallet } from "@/lib/billing/wallet";
 import { requireOrganizationPage } from "@/lib/organization-access";
+import { ADDON_SOURCES } from "@/lib/sanctions/sources";
 import { AccessDenied } from "@/components/Messages";
 import { PageTitle } from "@/components/Titles";
 import BillingClient from "./billing-client";
@@ -48,15 +49,42 @@ async function referralSummary(organizationId) {
   };
 }
 
+// Худалдаалж буй (ACTIVE) нэмэлт жагсаалтууд ба байгууллагын хамгийн сүүлийн хугацаа,
+// автомат сунгалтын тохиргоо. Худалдаалахаа больсон ч өмнө нь авч байсан бол харуулна.
+async function addonOffers(organizationId) {
+  const [settings, latest] = await Promise.all([
+    prisma.sourceAddon.findMany({ where: { status: "ACTIVE" } }),
+    latestAddons(organizationId),
+  ]);
+  const now = new Date();
+  return ADDON_SOURCES.flatMap(({ key, name, description }) => {
+    const setting = settings.find((row) => row.source === key);
+    const row = latest.find((item) => item.source === key);
+    if (!setting && !row) return [];
+    return [
+      {
+        key,
+        name,
+        description,
+        price: setting?.price ?? null,
+        durationDays: setting?.durationDays ?? null,
+        expiresAt: row?.expiresAt ?? null,
+        active: Boolean(row && row.expiresAt > now),
+        autoRenew: row?.autoRenew ?? false,
+      },
+    ];
+  });
+}
+
 const BillingPage = async () => {
   const { organization, accessError } = await requireOrganizationPage();
   const error = accessError ?? (!organization && "Таны бүртгэл байгууллагад холбогдоогүй байна.");
   if (error) return <AccessDenied {...PAGE} error={error} />;
 
   // Сунгалт хэтэвчнээс суутгах тул үлдэгдлийг уншихаас өмнө
-  await renewExpiredSubscription(organization.id);
+  await renewDue(organization.id);
   const wallet = await getWallet(organization.id);
-  const [subscription, packages, payments, transactions, bankAccounts, minTopup, referral] = await Promise.all([
+  const [subscription, packages, payments, transactions, bankAccounts, minTopup, referral, addons, awaiting] = await Promise.all([
     activeSubscription(organization.id),
     prisma.package.findMany({
       where: { status: "ACTIVE" },
@@ -98,6 +126,8 @@ const BillingPage = async () => {
     activeBankAccounts(),
     minTopupAmount(),
     referralSummary(organization.id),
+    addonOffers(organization.id),
+    awaitingRenewal(organization.id),
   ]);
 
   return (
@@ -113,6 +143,8 @@ const BillingPage = async () => {
         qpayEnabled={isQpayConfigured()}
         minTopup={minTopup}
         referral={referral}
+        addons={addons}
+        awaiting={awaiting}
       />
     </>
   );

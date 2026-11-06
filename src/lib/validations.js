@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SERVICE_KEYS } from "@/lib/billing/services";
-import { SANCTION_SOURCE_KEYS } from "@/lib/sanctions/sources";
+import { ADDON_SOURCE_KEYS, SANCTION_SOURCE_KEYS } from "@/lib/sanctions/sources";
 import { MATCHING_FIELDS } from "@/lib/screening/config";
 
 export const emailSchema = z
@@ -366,6 +366,26 @@ export const purchaseSchema = z.object({
   packageId: z.string({ error: "Багц сонгоно уу" }).min(1, { error: "Багц сонгоно уу" }),
   method: z.enum(["WALLET", "QPAY", "BANK_TRANSFER"], { error: "Төлбөрийн арга сонгоно уу" }),
   couponCode,
+});
+
+// Улсын нэмэлт жагсаалтын (add-on) үнэ, хугацааг админ тохируулна
+export const sourceAddonSchema = z.object({
+  price: money("Үнэ"),
+  durationDays: z.coerce
+    .number({ error: "Хоног оруулна уу" })
+    .int({ error: "Бүхэл тоо оруулна уу" })
+    .min(1, { error: "Дор хаяж 1 хоног" })
+    .max(3650, { error: "Хэт урт" }),
+  status,
+});
+
+// Байгууллага нэмэлт жагсаалт хэтэвчнээс худалдаж авна
+export const addonPurchaseSchema = z.object({
+  source: z.enum(ADDON_SOURCE_KEYS, { error: "Нэмэлт жагсаалт сонгоно уу" }),
+});
+
+export const addonAutoRenewSchema = addonPurchaseSchema.extend({
+  autoRenew: z.boolean({ error: "Автомат сунгалтын утга буруу" }),
 });
 
 // Худалдан авахаас өмнө купоны үр дүнг урьдчилан харах

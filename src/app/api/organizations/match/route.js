@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { fieldError, parseBody } from "@/lib/api";
+import { allowedSources, lockedSourcesError } from "@/lib/billing/addons";
 import { UsageError, attachUsage, consumeService, refundUsage, usageErrorResponse } from "@/lib/billing/usage";
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { findMatches, withEntryDetails } from "@/lib/screening/matcher";
@@ -23,6 +24,9 @@ export async function POST(request) {
   const customOrganizationId = session.user.role === "ADMIN" ? null : organization.id;
   if (!customOrganizationId) query.sources = query.sources.filter((source) => source !== "CUSTOM");
   if (query.sources.length === 0) return fieldError("sources", "Дор хаяж нэг жагсаалт сонгоно уу");
+  // Идэвхжүүлээгүй нэмэлт (улсын) жагсаалтаар тулгуулахгүй
+  const locked = lockedSourcesError(query.sources, await allowedSources(session, organization));
+  if (locked) return fieldError("sources", locked);
 
   let usage;
   try {

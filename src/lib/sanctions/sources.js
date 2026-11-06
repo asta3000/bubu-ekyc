@@ -53,7 +53,64 @@ export const SANCTION_SOURCES = [
     url: null,
     infoUrl: "https://eur-lex.europa.eu/eli/reg/2014/833",
   },
+  {
+    key: "WORLD_BANK",
+    name: "Дэлхийн банкны хориглосон этгээд",
+    description: "World Bank debarred firms and individuals. Дэлхийн банкны санхүүжилттэй төсөлд оролцох эрхгүй компани, хувь хүн.",
+    // Албан ёсны вэб хуудасны ашигладаг API (apikey header-тэй, importer.js-д)
+    url: "https://apigwext.worldbank.org/dvsvc/v1.0/json/APPLICATION/ADOBE_EXPRNCE_MGR/FIRM/SANCTIONED_FIRM",
+    infoUrl: "https://www.worldbank.org/en/projects-operations/procurement/debarred-firms",
+  },
+  // ---- Улсын нэмэлт жагсаалтууд (addon: true) ----
+  // Байгууллага "Багц, төлбөр" хэсгээс тусад нь худалдаж авсны дараа л тулгалтад ашиглана
+  {
+    key: "CA_SEMA",
+    name: "Канадын жагсаалт",
+    description: "Consolidated Canadian Autonomous Sanctions List (SEMA, JVCFOA).",
+    url: "https://www.international.gc.ca/world-monde/assets/office_docs/international_relations-relations_internationales/sanctions/sema-lmes.xml",
+    infoUrl:
+      "https://www.international.gc.ca/world-monde/international_relations-relations_internationales/sanctions/consolidated-consolide.aspx?lang=eng",
+    addon: true,
+  },
+  {
+    key: "FR_GELS",
+    name: "Францын жагсаалт",
+    description: "Registre national des gels (DG Trésor). Францад хөрөнгө нь царцаагдсан этгээд.",
+    url: "https://gels-avoirs.dgtresor.gouv.fr/ApiPublic/api/v1/publication/derniere-publication-fichier-json",
+    infoUrl: "https://gels-avoirs.dgtresor.gouv.fr/",
+    addon: true,
+  },
+  {
+    key: "CH_SECO",
+    name: "Швейцарийн жагсаалт",
+    description: "SECO sanctions list. Швейцарийн эдийн засгийн хориг арга хэмжээний нэгдсэн жагсаалт.",
+    url: "https://www.sesam.search.admin.ch/sesam-search-web/pages/downloadXmlGesamtliste.xhtml?lang=en&action=downloadXmlGesamtlisteAction",
+    infoUrl: "https://www.seco.admin.ch/seco/en/home/Aussenwirtschaftspolitik_Wirtschaftliche_Zusammenarbeit/Wirtschaftsbeziehungen/exportkontrollen-und-sanktionen/sanktionen-embargos.html",
+    addon: true,
+  },
+  {
+    key: "JP_MOF",
+    name: "Японы жагсаалт",
+    description: "Японы Сангийн яамны хөрөнгө царцаах этгээдийн нэгдсэн жагсаалт (外為法 経済制裁措置対象者).",
+    // Файлын нэрэнд огноо орсон тул энэ хуудаснаас хамгийн сүүлийн CSV-г олж татна (importer.js)
+    url: "https://www.mof.go.jp/policy/international_policy/gaitame_kawase/gaitame/economic_sanctions/list.html",
+    infoUrl: "https://www.mof.go.jp/policy/international_policy/gaitame_kawase/gaitame/economic_sanctions/list.html",
+    addon: true,
+  },
+  {
+    key: "AU_DFAT",
+    name: "Австралийн жагсаалт",
+    description: "DFAT Consolidated List. Австралийн НҮБ-ын болон бие даасан хоригийн нэгдсэн жагсаалт.",
+    url: "https://www.dfat.gov.au/sites/default/files/Australian_Sanctions_Consolidated_List.xlsx",
+    infoUrl: "https://www.dfat.gov.au/international-relations/security/sanctions/consolidated-list",
+    addon: true,
+  },
 ];
+
+// Бүх байгууллагад багтах үндсэн ба тусад нь худалдаж авах нэмэлт жагсаалтууд
+export const CORE_SOURCES = SANCTION_SOURCES.filter((source) => !source.addon);
+export const ADDON_SOURCES = SANCTION_SOURCES.filter((source) => source.addon);
+export const ADDON_SOURCE_KEYS = ADDON_SOURCES.map((source) => source.key);
 
 // Байгууллагын өөрийн жагсаалтын бичлэг (SanctionEntry.listId-тэй). Админы импорт, нийтийн
 // жагсаалтад орохгүй, зөвхөн тухайн байгууллагын тулгалтад ашиглагдана.

@@ -25,12 +25,14 @@ const thresholdOptions = (defaultThreshold) =>
   [...new Set([...THRESHOLD_VALUES, defaultThreshold])].sort((a, b) => a - b).map((value) => ({ value, label: `${value}%` }));
 
 // Жагсаалтын нэрний доорх тайлбар: бичлэгийн тоо, сүүлд шинэчлэгдсэн огноо
-const sourceDescription = ({ key, count, updatedAt }) =>
-  key === "CUSTOM" && !count
-    ? "Бичлэггүй: Өөрийн жагсаалт хэсгээс нэмнэ"
-    : updatedAt
-      ? `${count.toLocaleString("en-US")} бичлэг · ${updatedAt}-нд шинэчлэгдсэн`
-      : "Импортлогдоогүй";
+const sourceDescription = ({ key, count, updatedAt, locked }) =>
+  locked
+    ? "Нэмэлт жагсаалт: Багц, төлбөр хэсгээс идэвхжүүлнэ"
+    : key === "CUSTOM" && !count
+      ? "Бичлэггүй: Өөрийн жагсаалт хэсгээс нэмнэ"
+      : updatedAt
+        ? `${count.toLocaleString("en-US")} бичлэг · ${updatedAt}-нд шинэчлэгдсэн`
+        : "Импортлогдоогүй";
 
 // Тулгалтын явц. Сервер явцаа мэдээлдэггүй тул хүсэлт хүлээх хооронд 95% хүртэл
 // аажмаар өсгөж, хариу ирэхэд 100% болгоод нууна. Идэвхгүй үед null.
@@ -69,7 +71,7 @@ const MatchProgress = ({ value }) => (
 );
 
 // Харилцагчийн мэдээллээр хоригийн жагсаалттай тулгана.
-// countries: [{ value, label }], sources: [{ key, name, count, updatedAt }],
+// countries: [{ value, label }], sources: [{ key, name, count, updatedAt, locked }],
 // defaults: URL-аас ирсэн анхны утга { name, birthDate, subjectType }
 // defaultThreshold: админы онооны тохиргооны анхны босго
 const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 }) => {
@@ -228,8 +230,8 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
                   value={source.key}
                   label={source.name}
                   description={sourceDescription(source)}
-                  defaultChecked={source.count > 0}
-                  disabled={source.count === 0}
+                  defaultChecked={source.count > 0 && !source.locked}
+                  disabled={source.count === 0 || source.locked}
                 />
               ))}
             </div>

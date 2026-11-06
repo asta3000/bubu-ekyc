@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { fieldError } from "@/lib/api";
+import { allowedSources, lockedSourcesError } from "@/lib/billing/addons";
 import {
   UsageError,
   attachUsage,
@@ -63,6 +64,8 @@ export async function POST(request) {
   const customOrganizationId = session.user.role === "ADMIN" ? null : organization.id;
   const sources = options.data.sources.filter((source) => customOrganizationId || source !== "CUSTOM");
   if (!sources.length) return fieldError("sources", "Дор хаяж нэг жагсаалт сонгоно уу");
+  const locked = lockedSourcesError(sources, await allowedSources(session, organization));
+  if (locked) return fieldError("sources", locked);
 
   const errors = [...parsed.errors];
   const rows = [];
