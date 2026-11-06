@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { uniqueCode } from "@/lib/codes";
 import { formatMoney } from "@/lib/format";
-import { cancelInvoice, createInvoice, paidAmount } from "./qpay";
+import { cancelInvoice, createInvoice, isQpayConfigured, paidAmount } from "./qpay";
+import { sendTopupReceipt } from "./documents";
 import { grantReferralReward } from "./referrals";
 import { activateSubscription, createSubscription } from "./subscriptions";
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from "./coupons";
@@ -105,20 +106,27 @@ export async function minTopupAmount() {
   return cheapest?.basePrice ?? FALLBACK_MIN_TOPUP;
 }
 
-// Хэтэвч цэнэглэх (QPay, банкны шилжүүлэг)
-export const createTopup = async ({ organizationId, userId, amount, method }) =>
-  withQpayInvoice(
-    await prisma.payment.create({
-      data: {
-        organizationId,
-        createdById: userId,
-        purpose: "WALLET_TOPUP",
-        method,
-        amount,
-        reference: await uniqueReference(),
-      },
-    }),
-  );
+// Хэтэвч цэнэглэх (QPay, банкны шилжүүлэг). Нэхэмжлэхэд QPay ба банкны данс хоёуланг
+// харуулдаг тул QPay тохируулсан бол банкаар сонгосон ч QPay нэхэмжлэх үүсгэнэ (аль нэгээр
+// төлөхөд хэрэгжинэ). Банкаар сонгосон үед QPay нэхэмжлэх үүсгэж чадаагүй ч төлбөр хэвээр.
+export async function createTopup({ organizationId, userId, amount, method }) {
+  const payment = await prisma.payment.create({
+    data: {
+      organizationId,
+      createdById: userId,
+      purpose: "WALLET_TOPUP",
+      method,
+      amount,
+      reference: await uniqueReference(),
+    },
+  });
+  if (method === "QPAY") return withQpayInvoice(payment);
+  if (!isQpayConfigured()) return payment;
+  return attachQpayInvoice(payment).catch((error) => {
+    console.error(`[qpay] topup ${payment.id} invoice:`, error.message);
+    return payment;
+  });
+}
 
 // Багц худалдаж авах. Төлөх дүн 0 (үнэгүй багц, 100% купон) эсвэл хэтэвчээр төлбөл шууд
 // идэвхжинэ. couponCode: үнийг хямдруулах эсвэл хугацааг сунгах купон (нэг худалдан авалтад нэг).
@@ -212,6 +220,8 @@ export async function completePayment(paymentId, { reviewedById = null } = {}) {
   // Цэнэглэлт (хэтэвчинд мөнгө орсон), багц идэвхжсэн (нэмэлт жагсаалтад идэвхтэй багц
   // шаардлагатай), урамшуулал авсан байгууллагуудын хүлээгдэж буй сунгалтыг шууд хийнэ
   await renewAfter([completed.payment.organizationId, ...completed.referrerIds]);
+  // Хэтэвч цэнэглэгдсэн бол зарлагын баримтыг имэйлээр илгээнэ (алдаа нь төлбөрт нөлөөлөхгүй)
+  if (completed.payment.purpose === "WALLET_TOPUP") await sendTopupReceipt(completed.payment.id);
   return true;
 }
 
@@ -257,9 +267,24 @@ export async function closePayment(paymentId, { status, reviewedById = null, adm
   return closed ? "CLOSED" : null;
 }
 
-// QPay-ийн төлөгдсөн эсэхийг шалгаж, төлөгдсөн бол хэрэгжүүлнэ
+// QPay-ийн төлөгдсөн эсэхийг шалгаж, төлөгдсөн бол хэрэгжүүлнэ. Банкаар сонгосон цэнэглэлт
+// ч QPay нэхэмжлэхтэй байж болно.
 export async function syncQpayPayment(payment) {
-  if (payment.method !== "QPAY" || payment.status !== "PENDING" || !payment.qpayInvoiceId) return false;
+  if (payment.status !== "PENDING" || !payment.qpayInvoiceId) return false;
   const paid = await paidAmount(payment.qpayInvoiceId);
   return paid >= payment.amount ? completePayment(payment.id) : false;
+}
+
+// Админ банкны шилжүүлэг орж ирснийг баталгаажуулна. QPay нэхэмжлэхтэй бол эхлээд түүнийг
+// хааж (дахин төлөгдөхөөс сэргийлнэ), энэ хооронд QPay-ээр төлөгдсөн байвал түүгээр хэрэгжүүлнэ.
+// Буцаах: хэрэгжсэн бол true
+export async function confirmBankPayment(paymentId, { reviewedById }) {
+  const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+  if (!payment || payment.status !== "PENDING") return false;
+  if (payment.qpayInvoiceId) {
+    await cancelInvoice(payment.qpayInvoiceId);
+    const paid = await paidAmount(payment.qpayInvoiceId).catch(() => 0);
+    if (paid >= payment.amount) return completePayment(payment.id);
+  }
+  return completePayment(payment.id, { reviewedById });
 }

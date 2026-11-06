@@ -31,12 +31,13 @@ const fromAddress = () => {
   return { name, address };
 };
 
-export async function sendMail({ to, subject, text, html }) {
+// attachments: nodemailer-ийн хавсралт. HTML дотор <img src="cid:..."> -ээр харуулах зураг (QR г.м.)
+export async function sendMail({ to, subject, text, html, attachments }) {
   const smtp = getTransporter();
   if (!smtp) throw new Error("SMTP тохируулаагүй байна (.env-ийн SMTP_HOST)");
 
   try {
-    return await smtp.sendMail({ from: fromAddress(), to, subject, text, html });
+    return await smtp.sendMail({ from: fromAddress(), to, subject, text, html, attachments });
   } catch (error) {
     console.error(`[mail] failed "${subject}" → ${to}:`, error.message);
     throw error;
@@ -73,7 +74,7 @@ export async function sendOtpMail(to, code, minutes) {
   });
 }
 
-const escapeHtml = (value) =>
+export const escapeHtml = (value) =>
   String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 
 // Мэдэгдлийн нийтлэг загвар: гарчиг, мөрүүд, товч. Хэрэглэгчийн оруулсан утгыг escape хийнэ.

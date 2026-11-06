@@ -19,7 +19,8 @@ const FILTERS = [
 ];
 
 // Хүлээгдэж буй төлбөрийн үйлдэл: банкны шилжүүлгийг баталгаажуулах, QPay-г шалгах,
-// аль алиныг нь татгалзах. QPay-ээс шалгаж чадахгүй бол админы зөвшөөрлөөр хүчээр хаана.
+// аль алиныг нь татгалзах. Хэтэвч цэнэглэх нэхэмжлэх QPay, банк хоёуланг агуулдаг тул
+// QPay нэхэмжлэхтэй цэнэглэлтэд хоёр товч хоёулаа гарна. QPay-ээс шалгаж чадахгүй бол админы зөвшөөрлөөр хүчээр хаана.
 const PaymentActions = ({ payment, submit, pending, onError }) => {
   const router = useRouter();
   if (payment.status !== "PENDING") return null;
@@ -46,11 +47,12 @@ const PaymentActions = ({ payment, submit, pending, onError }) => {
 
   return (
     <div className="flex justify-end gap-3">
-      {payment.method === "QPAY" ? (
+      {payment.qpayInvoiceId && (
         <Button variant="link" onClick={() => submit(`${API}/${payment.id}/check`, "POST")} disabled={pending}>
-          Шалгах
+          QPay шалгах
         </Button>
-      ) : (
+      )}
+      {(payment.method === "BANK_TRANSFER" || payment.purpose === "WALLET_TOPUP") && (
         <Button variant="link" onClick={confirm} disabled={pending}>
           Баталгаажуулах
         </Button>

@@ -17,6 +17,7 @@ const PAYMENT_SELECT = {
   status: true,
   amount: true,
   reference: true,
+  qpayInvoiceId: true,
   adminNote: true,
   createdAt: true,
   paidAt: true,

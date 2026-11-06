@@ -4,12 +4,15 @@ import { logAudit } from "@/lib/audit/log";
 import { PAYMENT_PURPOSES } from "@/lib/billing/labels";
 import { formatMoney } from "@/lib/format";
 
-// Админ зөвхөн банкны шилжүүлгийг гараар баталгаажуулна/татгалзана. QPay-г
-// QPay-ээс өөрөөс нь шалгаж (check) хэрэгжүүлнэ.
+// Админ банкны шилжүүлгийг гараар баталгаажуулна/татгалзана. Хэтэвч цэнэглэх нэхэмжлэх
+// QPay, банкны данс хоёуланг агуулдаг тул QPay-ээр сонгосон цэнэглэлтийг ч банкаар төлж болно.
+// Багцын QPay төлбөрийг QPay-ээс өөрөөс нь шалгаж (check) хэрэгжүүлнэ.
+export const isBankPayable = (payment) => payment.method === "BANK_TRANSFER" || payment.purpose === "WALLET_TOPUP";
+
 export async function bankTransferOrError(id) {
-  const payment = await prisma.payment.findUnique({ where: { id }, select: { method: true } });
+  const payment = await prisma.payment.findUnique({ where: { id }, select: { method: true, purpose: true } });
   if (!payment) return { error: notFound("Төлбөр олдсонгүй") };
-  if (payment.method !== "BANK_TRANSFER") {
+  if (!isBankPayable(payment)) {
     return { error: Response.json({ error: "Зөвхөн банкны шилжүүлгийг гараар шийдвэрлэнэ" }, { status: 400 }) };
   }
   return {};

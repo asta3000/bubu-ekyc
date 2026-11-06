@@ -1,4 +1,6 @@
+import { after } from "next/server";
 import { fieldError, parseBody } from "@/lib/api";
+import { sendTopupInvoice } from "@/lib/billing/documents";
 import { requireBillingApi } from "@/lib/billing/access";
 import { PAYMENT_METHODS } from "@/lib/billing/labels";
 import { PaymentError, createTopup, minTopupAmount } from "@/lib/billing/payments";
@@ -32,6 +34,8 @@ export async function POST(request) {
       summary: `Хэтэвч ${formatMoney(data.amount)}-өөр цэнэглэх төлбөр үүсгэв (${PAYMENT_METHODS[data.method]})`,
       metadata: { method: data.method, reference: payment.reference },
     });
+    // Нэхэмжлэхийг хэрэглэгч ба байгууллагын админууд руу хариуг хүлээлгэлгүй илгээнэ
+    after(() => sendTopupInvoice(payment.id));
     return Response.json({ paymentId: payment.id }, { status: 201 });
   } catch (err) {
     if (err instanceof PaymentError) return Response.json({ error: err.message }, { status: 502 });

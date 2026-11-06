@@ -87,7 +87,15 @@ const PaymentInstructions = ({ payment, bankAccounts, onClose }) => {
     <div className="space-y-4">
       <Message error={errors.form} />
       {success && <p className="rounded-md bg-gray-50 p-2 text-sm text-gray-600">{success}</p>}
-      {payment.method === "QPAY" ? <Qpay payment={payment} /> : <BankTransfer payment={payment} bankAccounts={bankAccounts} />}
+      {/* Хэтэвч цэнэглэх нэхэмжлэх QPay, банк хоёуланг агуулна: аль нэгээр нь төлнө */}
+      {payment.qpayInvoice && <Qpay payment={payment} />}
+      {payment.qpayInvoice && payment.purpose === "WALLET_TOPUP" && (
+        <p className="text-center text-xs text-gray-500">эсвэл банкны шилжүүлгээр</p>
+      )}
+      {(payment.method === "BANK_TRANSFER" || payment.purpose === "WALLET_TOPUP" || !payment.qpayInvoice) && (
+        <BankTransfer payment={payment} bankAccounts={bankAccounts} />
+      )}
+      <p className="text-xs text-gray-500">Нэхэмжлэхийг танд болон байгууллагын админуудад имэйлээр илгээсэн.</p>
       <div className="flex justify-between gap-2 border-t border-gray-100 pt-4">
         <Button variant="dangerLink" onClick={() => window.confirm("Төлбөрийг цуцлах уу?") && call("cancel")} disabled={pending}>
           Цуцлах
@@ -96,7 +104,7 @@ const PaymentInstructions = ({ payment, bankAccounts, onClose }) => {
           <Button onClick={onClose} disabled={pending}>
             Хаах
           </Button>
-          {payment.method === "QPAY" && (
+          {payment.qpayInvoice && (
             <Button variant="primary" onClick={() => call("check")} disabled={pending}>
               {pending ? "Шалгаж байна..." : "Төлбөр шалгах"}
             </Button>
