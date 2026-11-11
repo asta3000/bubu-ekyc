@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions";
 import { ROLE_LABELS } from "@/lib/labels";
 import { Badge } from "./Badges";
+import { CopyButton } from "./Buttons";
 import { Logo } from "./Logos";
 
 
@@ -97,6 +98,16 @@ const UserMenu = ({ user }) => {
               <Badge>{user.organizationName}</Badge>
             )}
           </div>
+          {/* Хэрэглэгчид бүртгүүлэхдээ энэ дугаараар байгууллагад нэгдэнэ */}
+          {user.role === "ORG_ADMIN" && user.organizationCustomerNumber && (
+            <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <div>
+                <p className="text-xs text-gray-500">Харилцагчийн дугаар</p>
+                <p className="font-mono text-sm font-semibold tracking-wider text-gray-900">{user.organizationCustomerNumber}</p>
+              </div>
+              <CopyButton text={user.organizationCustomerNumber} />
+            </div>
+          )}
           <div className="my-1 h-px bg-gray-100" />
           <MenuLink href="/profile" onClick={close}>
             Миний мэдээлэл
@@ -135,13 +146,18 @@ const NavLink = ({ href, children }) => {
   );
 };
 
-// Дээд талын цэс: лого, хэсгүүдийн холбоос, хэрэглэгчийн цэс
-export const Navbar = ({ user }) => (
+// Дээд талын цэс: лого, хэсгүүдийн холбоос, хэрэглэгчийн цэс.
+// services: байгууллагын идэвхтэй багцын үйлчилгээнүүд (null бол бүгдийг харуулна, админ)
+const hasService = (services, key) => !services || services.includes(key);
+
+export const Navbar = ({ user, services = null }) => (
   <header className="border-b border-gray-200 bg-white">
     <nav className="flex w-full items-center justify-between gap-4 px-4 py-2">
       <div className="flex items-center gap-6">
         <Logo />
-        <NavLink href="/organizations/verifications">Баталгаажуулалт</NavLink>
+        {hasService(services, "DOCUMENT_VERIFICATION") && (
+          <NavLink href="/organizations/verifications">Баталгаажуулалт</NavLink>
+        )}
         <NavLink href="/organizations/match">Хориг тулгах</NavLink>
         <NavLink href="/organizations/billing">Багц, төлбөр</NavLink>
         {user.role === "ORG_ADMIN" && <NavLink href="/organizations/lists">Өөрийн жагсаалт</NavLink>}

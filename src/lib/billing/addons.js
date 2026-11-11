@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ADDON_SOURCE_KEYS, CORE_SOURCES, SANCTION_SOURCE_KEYS, sanctionSource } from "@/lib/sanctions/sources";
 import { renewDue, retireOlderAddons } from "./renewals";
-import { activeSubscription } from "./subscriptions";
+import { CONTRACT_REQUIRED_MESSAGE, activeSubscription } from "./subscriptions";
 import { changeBalance, lockWallet } from "./wallet";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,6 +42,8 @@ export async function purchaseAddon({ organizationId, userId, source }) {
   if (!ADDON_SOURCE_KEYS.includes(source)) throw new AddonError("Нэмэлт жагсаалт олдсонгүй");
   const addon = await prisma.sourceAddon.findFirst({ where: { source, status: "ACTIVE" } });
   if (!addon) throw new AddonError("Энэ нэмэлт жагсаалтыг одоогоор худалдаалахгүй байна");
+  const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+  if (!organization?.contractSigned) throw new AddonError(CONTRACT_REQUIRED_MESSAGE);
 
   return prisma.$transaction(async (tx) => {
     // Зэрэг худалдан авалт хугацааг давхар тооцохоос сэргийлнэ

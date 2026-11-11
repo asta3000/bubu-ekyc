@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { grantStarterSubscription } from "@/lib/billing/subscriptions";
 import { prismaErrorResponse } from "@/lib/api";
 import { deleteBlob } from "@/lib/blob";
 import { newOrganizationDefaults } from "@/lib/organizations";
@@ -33,6 +34,8 @@ export async function POST(request) {
       },
       select: { id: true },
     });
+    // Шинэ байгууллагад гэрээ шаардахгүй хамгийн хямд багцыг шууд идэвхжүүлнэ
+    await prisma.$transaction((tx) => grantStarterSubscription(tx, organization.id));
     await logAudit({
       action: "organization.create",
       actor: session.user,

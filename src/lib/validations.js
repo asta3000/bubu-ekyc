@@ -120,6 +120,14 @@ export const registerOrganizationSchema = z.discriminatedUnion(
       registerNumber,
       email: emailSchema,
       phone: phone("Утасны дугаар"),
+      // Урьсан байгууллагын промо код (заавал биш)
+      referralCode: z
+        .string()
+        .trim()
+        .toUpperCase()
+        .max(20, { error: "Промо код 20 тэмдэгтээс ихгүй" })
+        .optional()
+        .transform((value) => value || undefined),
     }),
     z.object({
       mode: z.literal("join"),
@@ -338,6 +346,9 @@ export const packageSchema = z
     durationDays: nullable(
       z.coerce.number({ error: "Хоног оруулна уу" }).int().min(1, { error: "Дор хаяж 1 хоног" }).max(3650, { error: "Хэт урт" }),
     ),
+    // Гэрээ байгуулсан байгууллага л идэвхжүүлнэ. false бол гэрээгүй байгууллагад (шинээр
+    // бүртгүүлэхэд хамгийн хямдыг нь автоматаар) олгоно.
+    contractRequired: z.boolean({ error: "Гэрээ шаардах эсэхийг сонгоно уу" }),
     status,
     items: z
       .array(
@@ -382,6 +393,15 @@ export const sourceAddonSchema = z.object({
 // Байгууллага нэмэлт жагсаалт хэтэвчнээс худалдаж авна
 export const addonPurchaseSchema = z.object({
   source: z.enum(ADDON_SOURCE_KEYS, { error: "Нэмэлт жагсаалт сонгоно уу" }),
+});
+
+export const referralCodeSchema = z.object({
+  referralCode: z
+    .string({ error: "Промо код оруулна уу" })
+    .trim()
+    .toUpperCase()
+    .min(1, { error: "Промо код оруулна уу" })
+    .max(20, { error: "Промо код 20 тэмдэгтээс ихгүй" }),
 });
 
 export const paymentDocumentSchema = z.object({

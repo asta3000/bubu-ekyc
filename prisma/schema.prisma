@@ -473,16 +473,17 @@ model CouponRedemption {
 
 // Админы тохируулдаг багц
 model Package {
-  id           String   @id @default(cuid())
-  name         String   @unique
-  description  String?
+  id               String   @id @default(cuid())
+  name             String   @unique
+  description      String?
   // Суурь үнэ. 0 бол бүх ашиглалт задгай үнээр хэтэвчнээс
-  basePrice    Int
+  basePrice        Int
   // Идэвхжсэнээс хойш хүчинтэй хоног. Хоосон бол хугацаагүй
-  durationDays Int?
-  status       STATUS   @default(ACTIVE)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  durationDays     Int?
+  contractRequired Boolean  @default(true)
+  status           STATUS   @default(ACTIVE)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   items         PackageItem[]
   subscriptions Subscription[]
@@ -665,11 +666,11 @@ model Payment {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  createdBy      User?             @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  reviewedBy     User?             @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  redemption     CouponRedemption?
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription    Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  createdBy       User?             @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy      User?             @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  redemption      CouponRedemption?
   referralRewards ReferralReward[]
 
   @@index([organizationId, createdAt])
@@ -721,21 +722,21 @@ model BankAccount {
 // Системийн ерөнхий тохиргоо (ганц мөр, id = "system"). Админ /managements/settings-ээс засна.
 // Хэвлэх тайлангийн толгойд холбоо барих мэдээлэл болж харагдана.
 model SystemSetting {
-  id          String   @id @default("system")
-  purpose     String?
-  website     String?
-  email       String?
-  phone       String?
-  address     String?
-  linkedin    String?
-  facebook    String?
-  instagram   String?
+  id                    String   @id @default("system")
+  purpose               String?
+  website               String?
+  email                 String?
+  phone                 String?
+  address               String?
+  linkedin              String?
+  facebook              String?
+  instagram             String?
   // Урьсан байгууллагыг урьсан байгууллагад (2-р шат) олгох урамшууллын хувь. Хоосон бол 1.
-  referralSecondRate Int?
+  referralSecondRate    Int?
   // Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо. Хоосон бол 3.
   uncontractedUserLimit Int?
-  updatedById String?
-  updatedAt   DateTime @updatedAt
+  updatedById           String?
+  updatedAt             DateTime @updatedAt
 }
 
 // Баримтын дугаарын оны тоолуур. Он бүр 1-ээс эхэлнэ.

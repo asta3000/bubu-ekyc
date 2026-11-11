@@ -122,6 +122,15 @@ const OrganizationStep = ({ initial, notice, onDone }) => {
             error={errors.phone}
             required
           />
+          <Input
+            label="Промо код (заавал биш)"
+            name="referralCode"
+            defaultValue={values.referralCode}
+            maxLength={20}
+            placeholder="Танайг урьсан байгууллагын код"
+            className="uppercase placeholder:normal-case"
+            error={errors.referralCode}
+          />
         </div>
       ) : (
         <div key="join" className="space-y-4">

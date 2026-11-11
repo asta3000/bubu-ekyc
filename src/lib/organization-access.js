@@ -9,7 +9,7 @@ import { requireRoleApi, requireSessionApi, requireSessionPage } from "@/lib/ses
 async function resolveAccess(user) {
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { organization: { select: { id: true, name: true, status: true } } },
+    select: { organization: { select: { id: true, name: true, status: true, contractSigned: true } } },
   });
   const organization = dbUser?.organization ?? null;
   if (user.role === "ADMIN") return { organization };

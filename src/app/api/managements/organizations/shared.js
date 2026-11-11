@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { fieldError, notDeleted } from "@/lib/api";
 import { uploadLogo } from "@/lib/blob";
 import { DUPLICATE_NAME, DUPLICATE_REGISTER, registerNumberTaken } from "@/lib/organizations";
+import { findReferralPromo, referralLocked } from "@/lib/promo";
 import { fieldErrors, logoFileError, organizationSchema, referralRateSchema } from "@/lib/validations";
 
 export const ORGANIZATION_ERRORS = {
@@ -70,28 +71,11 @@ export async function parseOrganizationForm(request, organizationId = null) {
 // (шинэ бол null). { referralPromoId } эсвэл алдааны { error } Response.
 export async function resolveReferral(code, organizationId = null) {
   if (!code) return { referralPromoId: null };
-  const promo = await prisma.promo.findUnique({
-    where: { code },
-    select: { id: true, organizationId: true, organization: { select: { status: true } } },
-  });
-  if (!promo?.organizationId) return { error: fieldError("referralCode", "Промо код олдсонгүй") };
-  if (promo.organizationId === organizationId) {
-    return { error: fieldError("referralCode", "Байгууллага өөрийнхөө промо кодыг ашиглах боломжгүй") };
-  }
-  if (promo.organization.status !== "ACTIVE") {
-    return { error: fieldError("referralCode", "Промо кодын эзэн байгууллага идэвхгүй байна") };
-  }
-  return { referralPromoId: promo.id };
+  const { promoId, error } = await findReferralPromo(code, organizationId);
+  return error ? { error: fieldError("referralCode", error) } : { referralPromoId: promoId };
 }
 
-// Анхны бодит төлбөр (QPay, банк) хийгдсэний дараа санал болгогчийг өөрчлөхгүй
-export async function referralLocked(organizationId) {
-  const paid = await prisma.payment.findFirst({
-    where: { organizationId, status: "PAID", method: { in: ["QPAY", "BANK_TRANSFER"] } },
-    select: { id: true },
-  });
-  return Boolean(paid);
-}
+export { referralLocked };
 
 // Логог storage-д хадгална: { url } эсвэл алдааны { error } Response
 export async function storeLogo(file) {

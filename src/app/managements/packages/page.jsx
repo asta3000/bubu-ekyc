@@ -43,6 +43,7 @@ const PackagesPage = async () => {
       description: true,
       basePrice: true,
       durationDays: true,
+      contractRequired: true,
       status: true,
       items: { select: { service: true, quota: true, unitPrice: true } },
       // Хугацаа нь дууссан ч ACTIVE төлөвтэй үлдсэнийг тоолохгүй

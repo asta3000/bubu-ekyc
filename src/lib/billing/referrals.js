@@ -15,14 +15,17 @@ export async function secondReferralRate(db = prisma) {
   return settings?.referralSecondRate ?? DEFAULT_SECOND_REFERRAL_RATE;
 }
 
-// Байгууллагыг урьсан (промо кодыг нь ашигласан) байгууллага: { id, status } эсвэл null
+// Байгууллагыг урьсан (промо кодыг нь ашигласан) байгууллага: { id, status, contractSigned } эсвэл null
 const referrerOf = async (tx, organizationId) =>
   (
     await tx.organization.findUnique({
       where: { id: organizationId },
-      select: { referralPromo: { select: { organization: { select: { id: true, status: true } } } } },
+      select: { referralPromo: { select: { organization: { select: { id: true, status: true, contractSigned: true } } } } },
     })
   )?.referralPromo?.organization ?? null;
+
+// Урамшуулал авах эрхтэй: идэвхтэй, гэрээ байгуулсан байгууллага
+const eligible = (organization) => organization?.status === "ACTIVE" && organization.contractSigned;
 
 // Нэг шатны урамшууллыг бүртгэж хэтэвчинд нэмнэ
 async function reward(tx, payment, { referrerId, level, rate, description }) {
@@ -39,7 +42,7 @@ async function reward(tx, payment, { referrerId, level, rate, description }) {
 // болсны дараа. Нэг төлбөрөөс шат бүрт нэг л удаа (ReferralReward [paymentId, level] unique).
 //  1-р шат: төлсөн байгууллагыг урьсан (промо кодын эзэн) байгууллагад промо кодын хувиар
 //  2-р шат: түүнийг урьсан байгууллагад системийн тохиргооны хувиар (анхдагч 1%)
-// Идэвхгүй байгууллага тухайн шатны урамшууллыг авахгүй ч нөгөө шатанд нөлөөлөхгүй.
+// Идэвхгүй эсвэл гэрээ байгуулаагүй байгууллага тухайн шатны урамшууллыг авахгүй ч нөгөө шатанд нөлөөлөхгүй.
 export async function grantReferralReward(tx, payment) {
   if (!REWARDED_METHODS.includes(payment.method)) return [];
 
@@ -48,7 +51,7 @@ export async function grantReferralReward(tx, payment) {
     select: {
       name: true,
       referralPromo: {
-        select: { discount: true, organization: { select: { id: true, name: true, status: true } } },
+        select: { discount: true, organization: { select: { id: true, name: true, status: true, contractSigned: true } } },
       },
     },
   });
@@ -56,7 +59,7 @@ export async function grantReferralReward(tx, payment) {
   if (!first || first.id === payment.organizationId) return [];
 
   const rewards = [];
-  if (first.status === "ACTIVE") {
+  if (eligible(first)) {
     rewards.push(
       await reward(tx, payment, {
         referrerId: first.id,
@@ -69,7 +72,7 @@ export async function grantReferralReward(tx, payment) {
 
   // Тойрог (A→B→A) үүссэн бол төлсөн болон 1-р шатны байгууллагад дахин олгохгүй
   const second = await referrerOf(tx, first.id);
-  if (second && second.status === "ACTIVE" && second.id !== payment.organizationId && second.id !== first.id) {
+  if (eligible(second) && second.id !== payment.organizationId && second.id !== first.id) {
     const rate = await secondReferralRate(tx);
     rewards.push(
       await reward(tx, payment, {

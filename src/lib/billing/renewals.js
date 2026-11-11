@@ -3,7 +3,7 @@ import { logAudit } from "@/lib/audit/log";
 import { formatDate, formatMoney } from "@/lib/format";
 import { sanctionSource } from "@/lib/sanctions/sources";
 import { LOCKED_TRANSACTION, hasPendingPurchase, uniqueReference } from "./payments";
-import { activateSubscription, activeSubscription, createSubscription } from "./subscriptions";
+import { activateSubscription, activeSubscription, contractBlocks, createSubscription } from "./subscriptions";
 import { changeBalance, getWallet, lockWallet } from "./wallet";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,7 +38,9 @@ export async function renewExpiredSubscription(organizationId) {
     const pkg = previous.packageId
       ? await tx.package.findFirst({ where: { id: previous.packageId, status: "ACTIVE" }, include: { items: true } })
       : null;
-    if (!pkg) {
+    // Багц гэрээ шаарддаг болсон бол гэрээгүй байгууллагад сунгахгүй
+    const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+    if (!pkg || contractBlocks(pkg, organization)) {
       await end();
       return null;
     }
@@ -143,6 +145,9 @@ async function renewAddon(organizationId, source) {
 
     const addon = await tx.sourceAddon.findFirst({ where: { source, status: "ACTIVE" } });
     if (!addon || !(await activeSubscription(organizationId, tx))) return null;
+    // Гэрээ цуцлагдсан (гэрээгүй болсон) байгууллагын нэмэлт жагсаалтыг сунгахгүй
+    const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+    if (!organization?.contractSigned) return null;
     if ((await getWallet(organizationId, tx)).balance < addon.price) return null;
 
     // Хугацаа дууссанаас хойш ашиглаагүй хугацааг тооцохгүй, одооноос эхэлнэ

@@ -86,8 +86,10 @@ const MatchPage = async ({ searchParams }) => {
 
   return (
     <>
-      <PageTitle {...PAGE} />
-      <ServiceAllowance organization={organization} service="SANCTION_SCREENING" />
+      <PageTitle
+        {...PAGE}
+        aside={<ServiceAllowance organization={organization} service="SANCTION_SCREENING" size="large" />}
+      />
       <MatchForm
         countries={countryOptions()}
         sources={[...sources, ...customSources]}

@@ -42,6 +42,7 @@ export const AUDIT_ACTIONS = {
   "organization.update": { label: "Байгууллагын мэдээлэл өөрчилсөн", org: true },
   "organization.delete": { label: "Байгууллага устгасан" },
   "organization.promo_create": { label: "Промо код үүсгэсэн", org: true },
+  "organization.referral_set": { label: "Урьсан байгууллагын промо код оруулсан", org: true },
 
   "user.join": { label: "Байгууллагад нэгдсэн", org: true },
   "user.update": { label: "Хэрэглэгчийн мэдээлэл өөрчилсөн", org: true },

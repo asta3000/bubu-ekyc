@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requiresContract } from "./services";
 import { lockWallet } from "./wallet";
 
 // Одоо хүчинтэй багц (ACTIVE, хугацаа дуусаагүй) үйлчилгээнүүдтэйгээ
@@ -76,4 +77,33 @@ export async function activateSubscription(tx, subscriptionId) {
         : null,
     },
   });
+}
+
+// Гэрээ шаардахгүй, суурь үнэ нь хамгийн бага идэвхтэй багц (гэрээгүй байгууллагын багц)
+export const starterPackage = (db = prisma) =>
+  db.package.findFirst({
+    where: { status: "ACTIVE", contractRequired: false },
+    orderBy: [{ basePrice: "asc" }, { createdAt: "asc" }],
+    include: { items: true },
+  });
+
+// Шинээр үүссэн байгууллагад гэрээ шаардахгүй хамгийн хямд багцыг төлбөргүйгээр шууд
+// идэвхжүүлнэ (гэрээгүй байгууллага хэтэвчээ цэнэглэх боломжгүй тул). Ийм багц байхгүй бол
+// юу ч хийхгүй. Transaction (tx) дотор дуудна. Буцаах: идэвхжсэн захиалга эсвэл null
+export async function grantStarterSubscription(tx, organizationId) {
+  const pkg = await starterPackage(tx);
+  if (!pkg) return null;
+  const subscription = await createSubscription(pkg, organizationId, tx);
+  return activateSubscription(tx, subscription.id);
+}
+
+// Гэрээ байгуулаагүй байгууллага зөвхөн гэрээ шаардахгүй багц идэвхжүүлнэ
+export const contractBlocks = (pkg, organization) => requiresContract(pkg) && !organization?.contractSigned;
+
+export const CONTRACT_REQUIRED_MESSAGE = "Гэрээ байгуулаагүй байгууллага энэ боломжийг ашиглах боломжгүй. Админтай холбогдож гэрээ байгуулна уу.";
+
+// Байгууллагын идэвхтэй багцад багтсан үйлчилгээнүүд (цэс харуулахад). Багцгүй бол хоосон.
+export async function subscribedServices(organizationId) {
+  const subscription = await activeSubscription(organizationId);
+  return subscription?.items.map((item) => item.service) ?? [];
 }

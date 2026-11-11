@@ -7,6 +7,7 @@ import { awaitingRenewal, latestAddons, renewDue } from "@/lib/billing/renewals"
 import { activeSubscription } from "@/lib/billing/subscriptions";
 import { getWallet } from "@/lib/billing/wallet";
 import { requireOrganizationPage } from "@/lib/organization-access";
+import { referralLocked } from "@/lib/promo";
 import { ADDON_SOURCES } from "@/lib/sanctions/sources";
 import { AccessDenied } from "@/components/Messages";
 import { PageTitle } from "@/components/Titles";
@@ -23,9 +24,11 @@ const HISTORY_LIMIT = 30;
 
 // Байгууллагын промо код, түүгээр бүртгүүлсэн (1-р шат) ба тэдгээрийн урьсан (2-р шат)
 // байгууллагын тоо, шат бүрээр авсан урамшуулал
-async function referralSummary(organizationId) {
+// canSetReferrer: урьсан байгууллагын кодыг оруулах боломжтой эсэх (ORG_ADMIN, оруулаагүй,
+// бодит төлбөр хийгээгүй)
+async function referralSummary(organizationId, isOrgAdmin) {
   const notDeletedOrg = { status: { not: "DELETED" } };
-  const [promo, referred, secondReferred, earned, secondRate] = await Promise.all([
+  const [promo, referred, secondReferred, earned, secondRate, self, locked] = await Promise.all([
     prisma.promo.findFirst({
       where: { organizationId },
       orderBy: { createdAt: "desc" },
@@ -37,6 +40,11 @@ async function referralSummary(organizationId) {
     }),
     prisma.referralReward.groupBy({ by: ["level"], where: { referrerId: organizationId }, _sum: { amount: true } }),
     secondReferralRate(),
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { referralPromo: { select: { code: true, organization: { select: { name: true } } } } },
+    }),
+    referralLocked(organizationId),
   ]);
   const earnedAt = (level) => earned.find((row) => row.level === level)?._sum.amount ?? 0;
   return {
@@ -46,6 +54,10 @@ async function referralSummary(organizationId) {
     secondRate,
     earnedAmount: earnedAt(1) + earnedAt(2),
     secondEarnedAmount: earnedAt(2),
+    referredBy: self?.referralPromo
+      ? { code: self.referralPromo.code, name: self.referralPromo.organization?.name ?? null }
+      : null,
+    canSetReferrer: isOrgAdmin && !self?.referralPromo && !locked,
   };
 }
 
@@ -77,7 +89,7 @@ async function addonOffers(organizationId) {
 }
 
 const BillingPage = async () => {
-  const { organization, accessError } = await requireOrganizationPage();
+  const { session, organization, accessError } = await requireOrganizationPage();
   const error = accessError ?? (!organization && "Таны бүртгэл байгууллагад холбогдоогүй байна.");
   if (error) return <AccessDenied {...PAGE} error={error} />;
 
@@ -95,6 +107,7 @@ const BillingPage = async () => {
         description: true,
         basePrice: true,
         durationDays: true,
+        contractRequired: true,
         items: { select: { service: true, quota: true, unitPrice: true } },
       },
     }),
@@ -125,7 +138,7 @@ const BillingPage = async () => {
     }),
     activeBankAccounts(),
     minTopupAmount(),
-    referralSummary(organization.id),
+    referralSummary(organization.id, session.user.role === "ORG_ADMIN"),
     addonOffers(organization.id),
     awaitingRenewal(organization.id),
   ]);
@@ -145,6 +158,7 @@ const BillingPage = async () => {
         referral={referral}
         addons={addons}
         awaiting={awaiting}
+        contractSigned={organization.contractSigned}
       />
     </>
   );

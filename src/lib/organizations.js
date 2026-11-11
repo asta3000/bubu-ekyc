@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { notDeleted } from "@/lib/api";
 import { uniqueCustomerNumber } from "@/lib/customer-number";
-import { uniquePromoCode } from "@/lib/promo";
+import { grantStarterSubscription } from "@/lib/billing/subscriptions";
+import { findReferralPromo, uniquePromoCode } from "@/lib/promo";
 import { DEFAULT_REFERRAL_RATE } from "@/lib/validations";
 import { logAudit } from "@/lib/audit/log";
 
@@ -73,15 +74,17 @@ export async function checkRegisterOrganization(data) {
     return { organization: { id: organization.id, name: organization.name } };
   }
 
-  const [duplicateName, duplicateRegister] = await Promise.all([
+  const [duplicateName, duplicateRegister, referral] = await Promise.all([
     nameTaken(data.name),
     registerNumberTaken(data.registerNumber),
+    data.referralCode ? findReferralPromo(data.referralCode) : {},
   ]);
   const errors = {
     ...(duplicateName && { name: DUPLICATE_NAME }),
     ...(duplicateRegister && { registerNumber: DUPLICATE_REGISTER }),
+    ...(referral.error && { referralCode: referral.error }),
   };
-  return Object.keys(errors).length ? { errors } : { organization: null };
+  return Object.keys(errors).length ? { errors } : { organization: null, referralPromoId: referral.promoId ?? null };
 }
 
 // Хэрэглэгчийг бүртгэлийн байгууллагатай нь үүсгэнэ. Шинэ байгууллага бол (гэрээгүй) хамт
@@ -107,17 +110,19 @@ export async function createUserWithOrganization(input, userData, select = { id:
     return { user };
   }
 
-  const { mode, ...organization } = input;
+  const { mode, referralCode, ...organization } = input;
   const defaults = await newOrganizationDefaults();
   const { user, organizationId } = await prisma.$transaction(async (tx) => {
     const { id } = await tx.organization.create({
-      data: { ...organization, ...defaults, contractSigned: false },
+      data: { ...organization, ...defaults, referralPromoId: check.referralPromoId, contractSigned: false },
       select: { id: true },
     });
     const created = await tx.user.create({
       data: { ...userData, role: "ORG_ADMIN", organizationId: id },
       select: { ...select, id: true },
     });
+    // Гэрээгүй байгууллагад зориулсан хамгийн хямд багцыг шууд идэвхжүүлнэ
+    await grantStarterSubscription(tx, id);
     return { user: created, organizationId: id };
   });
   await logAudit({
@@ -126,7 +131,7 @@ export async function createUserWithOrganization(input, userData, select = { id:
     organizationId,
     entity: { type: "Organization", id: organizationId },
     summary: `"${organization.name}" байгууллагыг бүртгүүлэв`,
-    metadata: { ...organization, customerNumber: defaults.customerNumber },
+    metadata: { ...organization, customerNumber: defaults.customerNumber, referralCode: referralCode ?? null },
   });
   return { user };
 }

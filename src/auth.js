@@ -27,7 +27,7 @@ const userSelect = {
   isEmailVerified: true,
   status: true,
   organizationId: true,
-  organization: { select: { name: true } },
+  organization: { select: { name: true, customerNumber: true } },
 };
 
 // Идэвхгүй бүртгэл. code нь signIn()-ийн үр дүнд ирж, нэвтрэх хуудсанд мессеж харуулна.
@@ -47,6 +47,8 @@ function toTokenUser(user) {
     pwd: passwordFingerprint(user.password),
     organizationId: user.organizationId ?? null,
     organizationName: user.organization?.name ?? null,
+    // Хэрэглэгчдээ байгууллагад нэгдүүлэхэд өгөх дугаар (navbar-ын профайлд ORG_ADMIN-д)
+    organizationCustomerNumber: user.organization?.customerNumber ?? null,
   };
 }
 
@@ -258,6 +260,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         hasPassword: token.hasPassword,
         organizationId: token.organizationId,
         organizationName: token.organizationName,
+        organizationCustomerNumber: token.organizationCustomerNumber ?? null,
       };
       session.accessTokenExpires = token.accessTokenExpires;
       session.refreshTokenExpires = token.refreshTokenExpires;

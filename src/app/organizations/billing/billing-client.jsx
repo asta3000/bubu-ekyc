@@ -9,7 +9,7 @@ import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
 import { PAYMENT_METHODS, PAYMENT_STATUSES, WALLET_TRANSACTION_TYPES, paymentPurpose } from "@/lib/billing/labels";
-import { billableService, includesQuota } from "@/lib/billing/services";
+import { billableService, includesQuota, requiresContract } from "@/lib/billing/services";
 import { useSubmit } from "@/lib/use-submit";
 import { formatDate, formatDateTime, formatMoney, personName } from "@/lib/format";
 import PaymentInstructions from "../_components/payment-instructions";
@@ -338,16 +338,46 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, onR
 };
 
 // Өөрийн промо код ба түүгээр авсан урамшуулал
-const ReferralCard = ({ referral }) => (
+// Урьсан байгууллагын промо кодыг дараа нь нэг удаа оруулах (ORG_ADMIN, төлбөр хийхээс өмнө)
+const ReferrerForm = () => {
+  const { errors, success, pending, send } = useSubmit();
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const referralCode = new FormData(event.currentTarget).get("referralCode");
+    if (window.confirm(`${referralCode} промо кодыг оруулах уу? Дараа нь өөрчлөх боломжгүй.`)) {
+      send("/api/organizations/billing/referral", "POST", { referralCode });
+    }
+  };
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2 border-t border-gray-100 pt-4">
+      <p className="text-sm text-gray-600">
+        Танайг өөр байгууллага урьсан бол түүний промо кодыг оруулна уу. Анхны төлбөрөөс өмнө нэг удаа оруулах боломжтой.
+      </p>
+      <Message error={errors.form} success={success} />
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="w-56">
+          <Input name="referralCode" placeholder="Промо код" maxLength={20} className="uppercase placeholder:normal-case" error={errors.referralCode} required />
+        </div>
+        <Button variant="secondary" type="submit" disabled={pending}>
+          {pending ? "Түр хүлээнэ үү..." : "Оруулах"}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+const ReferralCard = ({ referral, contractSigned }) => (
   <Card
     title="Санал болголт"
     description={
-      referral.promo
+      !contractSigned
+        ? "Танай промо код гэрээ байгуулсны дараа идэвхжинэ. Түүнээс өмнө бусад байгууллага ашиглах, урамшуулал авах боломжгүй."
+        : referral.promo
         ? `Промо кодоо бусад байгууллагад өгөөрэй. Түүгээр бүртгүүлсэн байгууллагын QPay, банкаар төлсөн төлбөр бүрээс ${referral.promo.discount}%, тэдгээрийн урьсан байгууллагын төлбөрөөс ${referral.secondRate}% таны хэтэвчинд орно.`
         : "Танай байгууллагад промо код үүсгээгүй байна. Админд хандана уу."
     }
   >
-    {referral.promo && (
+    {referral.promo && contractSigned && (
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <span className="rounded-lg border border-dashed border-gray-300 px-3 py-1.5 font-mono text-lg font-semibold tracking-wider">
@@ -374,11 +404,18 @@ const ReferralCard = ({ referral }) => (
         </dl>
       </div>
     )}
+    {referral.referredBy && (
+      <p className="border-t border-gray-100 pt-3 text-sm text-gray-600">
+        Танайг урьсан: <b>{referral.referredBy.name ?? "—"}</b> (промо код{" "}
+        <span className="font-mono">{referral.referredBy.code}</span>)
+      </p>
+    )}
+    {referral.canSetReferrer && <ReferrerForm />}
   </Card>
 );
 
 // Улсын нэмэлт жагсаалтууд: үндсэн багц дээр хэтэвчнээс худалдаж авна, идэвхтэй бол сунгана
-const AddonsSection = ({ addons, subscription, balance }) => {
+const AddonsSection = ({ addons, subscription, balance, contractSigned }) => {
   const { errors, success, pending, send } = useSubmit();
   const [busy, setBusy] = useState(null);
 
@@ -452,13 +489,15 @@ const AddonsSection = ({ addons, subscription, balance }) => {
                   variant="secondary"
                   className="w-full"
                   onClick={() => buy(addon)}
-                  disabled={pending || !subscription || balance < addon.price}
+                  disabled={pending || !contractSigned || !subscription || balance < addon.price}
                   title={
-                    !subscription
-                      ? "Эхлээд үндсэн багц идэвхжүүлнэ үү"
-                      : balance < addon.price
-                        ? "Хэтэвчний үлдэгдэл хүрэлцэхгүй байна"
-                        : undefined
+                    !contractSigned
+                      ? "Гэрээ байгуулсны дараа авна"
+                      : !subscription
+                        ? "Эхлээд үндсэн багц идэвхжүүлнэ үү"
+                        : balance < addon.price
+                          ? "Хэтэвчний үлдэгдэл хүрэлцэхгүй байна"
+                          : undefined
                   }
                 >
                   {busy === addon.key ? "Түр хүлээнэ үү..." : addon.active ? "Сунгах" : "Идэвхжүүлэх"}
@@ -520,6 +559,7 @@ const BillingClient = ({
   referral,
   addons,
   awaiting,
+  contractSigned,
 }) => {
   // { type: "topup" } | { type: "purchase", pkg } | { type: "payment", id }
   const [modal, setModal] = useState(null);
@@ -532,6 +572,15 @@ const BillingClient = ({
 
   return (
     <div className="space-y-6">
+      {!contractSigned && (
+        <div role="alert" className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p className="font-semibold">Танай байгууллага гэрээ байгуулаагүй байна</p>
+          <p className="mt-1">
+            Гэрээ байгуулаагүй байгууллага зөвхөн автоматаар олгогдсон багцаа ашиглана. Хэтэвч цэнэглэх, гэрээ шаардах багц
+            болон нэмэлт жагсаалт авах, промо кодоор урамшуулал авах боломжгүй. Гэрээ байгуулах бол админтай холбогдоно уу.
+          </p>
+        </div>
+      )}
       {awaiting && (
         <div role="alert" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">Хэтэвч хүрэлцээгүй тул автомат сунгалт хүлээгдэж байна</p>
@@ -552,7 +601,7 @@ const BillingClient = ({
             ажиллана. Бүгдийг сунгахад {formatMoney(awaiting.total)} шаардлагатай
             {awaiting.total > balance ? `, ${formatMoney(awaiting.total - balance)} дутуу байна` : ""}.
           </p>
-          {awaiting.total > balance && (
+          {awaiting.total > balance && contractSigned && (
             <Button variant="primary" onClick={() => setModal({ type: "topup" })}>
               Цэнэглэх
             </Button>
@@ -570,13 +619,19 @@ const BillingClient = ({
         <Card title="Хэтэвч">
           <p className="text-3xl font-bold text-gray-900">{formatMoney(balance)}</p>
           <p className="text-xs text-gray-500">Багцын тоо дууссаны дараах ашиглалт, багцын суурь үнийг эндээс төлж болно.</p>
-          <Button variant="primary" className="w-full" onClick={() => setModal({ type: "topup" })}>
+          <Button
+            variant="primary"
+            className="w-full"
+            onClick={() => setModal({ type: "topup" })}
+            disabled={!contractSigned}
+            title={contractSigned ? undefined : "Гэрээ байгуулсны дараа цэнэглэнэ"}
+          >
             Цэнэглэх
           </Button>
         </Card>
       </div>
 
-      <ReferralCard referral={referral} />
+      <ReferralCard referral={referral} contractSigned={contractSigned} />
 
       <div className="space-y-3">
         <h2 className="text-base font-semibold">Багцууд</h2>
@@ -589,7 +644,11 @@ const BillingClient = ({
                 <div className="space-y-1">
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-base font-semibold">{pkg.name}</h3>
-                    {subscription?.packageId === pkg.id && <Badge tone="green">Идэвхтэй</Badge>}
+                    {subscription?.packageId === pkg.id ? (
+                      <Badge tone="green">Идэвхтэй</Badge>
+                    ) : (
+                      requiresContract(pkg) && <Badge>Гэрээтэй</Badge>
+                    )}
                   </div>
                   {pkg.description && <p className="text-sm text-gray-500">{pkg.description}</p>}
                 </div>
@@ -602,7 +661,9 @@ const BillingClient = ({
                 <div className="flex-1">
                   <PackageItems pkg={pkg} />
                 </div>
-                {pkg.id === renewalPackage?.id ? (
+                {requiresContract(pkg) && !contractSigned ? (
+                  <p className="text-center text-xs text-gray-500">Гэрээ байгуулсны дараа идэвхжүүлнэ</p>
+                ) : pkg.id === renewalPackage?.id ? (
                   <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg, renew: true })}>
                     Сунгах
                   </Button>
@@ -617,7 +678,9 @@ const BillingClient = ({
         )}
       </div>
 
-      {addons.length > 0 && <AddonsSection addons={addons} subscription={subscription} balance={balance} />}
+      {addons.length > 0 && (
+        <AddonsSection addons={addons} subscription={subscription} balance={balance} contractSigned={contractSigned} />
+      )}
 
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <div className="space-y-3">

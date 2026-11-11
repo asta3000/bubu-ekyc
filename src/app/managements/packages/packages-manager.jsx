@@ -5,7 +5,7 @@ import { Checkbox, FieldError, Input, Textarea } from "@/components/Inputs";
 import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
-import { BILLABLE_SERVICES, includesQuota, serviceName } from "@/lib/billing/services";
+import { BILLABLE_SERVICES, includesQuota, requiresContract, serviceName } from "@/lib/billing/services";
 import { formatMoney } from "@/lib/format";
 import { FormActions, RowActions, StatusBadge, StatusSelect, Toolbar, useSubmit } from "../_components/ui";
 
@@ -56,6 +56,7 @@ const PackageForm = ({ pkg, onDone }) => {
       description: form.get("description"),
       basePrice: form.get("basePrice"),
       durationDays: form.get("durationDays"),
+      contractRequired: form.get("contractRequired") === "on",
       status: form.get("status"),
       items: form.getAll("services").map((service) => ({
         service,
@@ -94,6 +95,13 @@ const PackageForm = ({ pkg, onDone }) => {
         />
         <StatusSelect defaultValue={pkg?.status} error={errors.status} />
       </div>
+      <Checkbox
+        label="Гэрээ шаардана"
+        description="Зөвхөн гэрээ байгуулсан байгууллага идэвхжүүлнэ. Сонгоогүй бол гэрээгүй байгууллагад зориулсан багц: шинээр бүртгүүлсэн байгууллагад суурь үнэ нь хамгийн бага ийм багц автоматаар идэвхжинэ."
+        name="contractRequired"
+        defaultChecked={pkg ? requiresContract(pkg) : true}
+        error={errors.contractRequired}
+      />
       <div className="space-y-2">
         <p className="text-sm font-medium text-gray-700">Үйлчилгээнүүд</p>
         <p className="text-xs text-gray-500">
@@ -133,7 +141,7 @@ const PackagesManager = ({ packages }) => {
       {packages.length === 0 ? (
         <EmptyState>Багц үүсгээгүй байна</EmptyState>
       ) : (
-        <Table headers={["Нэр", "Суурь үнэ", "Хугацаа", "Үйлчилгээ (тоо · задгай үнэ)", "Идэвхтэй", "Төлөв", ""]}>
+        <Table headers={["Нэр", "Суурь үнэ", "Хугацаа", "Үйлчилгээ (тоо · задгай үнэ)", "Гэрээ", "Идэвхтэй", "Төлөв", ""]}>
           {packages.map((pkg) => (
             <tr key={pkg.id}>
               <Cell>
@@ -150,6 +158,9 @@ const PackagesManager = ({ packages }) => {
                     {serviceName(item.service)}: {includesQuota(pkg.basePrice, item.quota) ? item.quota : "—"} · {formatMoney(item.unitPrice)}
                   </p>
                 ))}
+              </Cell>
+              <Cell className="whitespace-nowrap text-xs">
+                {requiresContract(pkg) ? "Шаардана" : <span className="font-medium text-green-700">Гэрээгүйд</span>}
               </Cell>
               <Cell>{pkg._count.subscriptions}</Cell>
               <Cell>

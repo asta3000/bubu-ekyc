@@ -4,11 +4,14 @@ import { formatMoney } from "@/lib/format";
 import { cancelInvoice, createInvoice, isQpayConfigured, paidAmount } from "./qpay";
 import { sendTopupReceipt } from "./documents";
 import { grantReferralReward } from "./referrals";
-import { activateSubscription, createSubscription } from "./subscriptions";
+import { CONTRACT_REQUIRED_MESSAGE, activateSubscription, contractBlocks, createSubscription } from "./subscriptions";
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from "./coupons";
 import { changeBalance, lockWallet } from "./wallet";
 
 export class PaymentError extends Error {}
+
+// Гэрээ байгуулаагүй байгууллага хэтэвч цэнэглэх, гэрээ шаардах багц авах боломжгүй
+export class ContractError extends PaymentError {}
 
 // Багц худалдан авах, идэвхжүүлэх transaction. Нэг байгууллагын хүсэлтүүд хэтэвчний
 // түгжээгээр ээлжилдэг тул хүлээх хугацааг (Prisma-ийн анхдагч 5с) уртасгана.
@@ -110,6 +113,8 @@ export async function minTopupAmount() {
 // харуулдаг тул QPay тохируулсан бол банкаар сонгосон ч QPay нэхэмжлэх үүсгэнэ (аль нэгээр
 // төлөхөд хэрэгжинэ). Банкаар сонгосон үед QPay нэхэмжлэх үүсгэж чадаагүй ч төлбөр хэвээр.
 export async function createTopup({ organizationId, userId, amount, method }) {
+  const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+  if (!organization?.contractSigned) throw new ContractError(CONTRACT_REQUIRED_MESSAGE);
   const payment = await prisma.payment.create({
     data: {
       organizationId,
@@ -134,6 +139,10 @@ export async function createTopup({ organizationId, userId, amount, method }) {
 export async function purchasePackage({ organizationId, userId, packageId, method, couponCode = null }) {
   const pkg = await prisma.package.findFirst({ where: { id: packageId, status: "ACTIVE" }, include: { items: true } });
   if (!pkg) throw new PaymentError("Багц олдсонгүй");
+  const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+  if (contractBlocks(pkg, organization)) {
+    throw new PaymentError("Энэ багцыг гэрээ байгуулсан байгууллага л идэвхжүүлнэ. Админтай холбогдож гэрээ байгуулна уу.");
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     await lockWallet(tx, organizationId);

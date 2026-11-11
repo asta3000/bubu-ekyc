@@ -3,7 +3,7 @@ import { fieldError, parseBody } from "@/lib/api";
 import { sendTopupInvoice } from "@/lib/billing/documents";
 import { requireBillingApi } from "@/lib/billing/access";
 import { PAYMENT_METHODS } from "@/lib/billing/labels";
-import { PaymentError, createTopup, minTopupAmount } from "@/lib/billing/payments";
+import { ContractError, PaymentError, createTopup, minTopupAmount } from "@/lib/billing/payments";
 import { isQpayConfigured } from "@/lib/billing/qpay";
 import { formatMoney } from "@/lib/format";
 import { topupSchema } from "@/lib/validations";
@@ -38,6 +38,7 @@ export async function POST(request) {
     after(() => sendTopupInvoice(payment.id));
     return Response.json({ paymentId: payment.id }, { status: 201 });
   } catch (err) {
+    if (err instanceof ContractError) return Response.json({ error: err.message }, { status: 403 });
     if (err instanceof PaymentError) return Response.json({ error: err.message }, { status: 502 });
     throw err;
   }
