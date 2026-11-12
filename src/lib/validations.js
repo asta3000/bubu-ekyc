@@ -233,12 +233,11 @@ export const sanctionImportSchema = z.object({
 
 // ---- Хоригийн жагсаалттай тулгах (/organizations/match) ----
 
+// Нэр эсвэл бичиг баримтын дугаарын аль нэгээр тулгана (nameOrIdentifier-ээр шалгана)
 export const matchSchema = z.object({
-  name: z
-    .string({ error: "Нэр оруулна уу" })
-    .trim()
-    .min(2, { error: "Нэр оруулна уу" })
-    .max(200, { error: "Нэр хэт урт байна" }),
+  name: nullable(
+    z.string().trim().min(2, { error: "Нэр 2-оос доошгүй тэмдэгт" }).max(200, { error: "Нэр хэт урт байна" }),
+  ),
   subjectType: nullable(z.enum(["INDIVIDUAL", "ENTITY", "VESSEL", "AIRCRAFT"], { error: "Төрөл буруу байна" })),
   // "1975" эсвэл "1975-03-21"
   birthDate: nullable(
@@ -261,6 +260,28 @@ export const matchSchema = z.object({
   // Багцын тоо дууссан үед задгай үнээр төлөхийг хэрэглэгч баталгаажуулсан
   payOverage: z.boolean().optional().default(false),
 });
+
+// Хайж болох дугаар: үсэг, тоо 5-аас доошгүй, дор хаяж нэг тоотой (matcher-ийн identifierKey-тэй ижил)
+const searchableIdentifier = (value) => {
+  const key = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return key.length >= 5 && /\d/.test(key);
+};
+
+// Нэр эсвэл бичиг баримтын дугаарын аль нэг заавал. Дугаар дангаараа бол хайж болохуйц байх ёстой.
+export function nameOrIdentifier(data, ctx) {
+  if (data.name) return;
+  if (!data.identifier) {
+    ctx.addIssue({ code: "custom", path: ["name"], message: "Нэр эсвэл бичиг баримтын дугаарын аль нэгийг оруулна уу" });
+  } else if (!searchableIdentifier(data.identifier)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["identifier"],
+      message: "Дугаар 5-аас доошгүй үсэг, тоотой, дор хаяж нэг тоо агуулсан байна",
+    });
+  }
+}
+
+export const matchRequestSchema = matchSchema.superRefine(nameOrIdentifier);
 
 // ---- Иргэний бичиг баримт, нүүр тулгалт (Didit) ----
 

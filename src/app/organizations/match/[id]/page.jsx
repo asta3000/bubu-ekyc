@@ -8,7 +8,7 @@ import { Card } from "@/components/Cards";
 import { TextLink } from "@/components/Links";
 import { AccessDenied } from "@/components/Messages";
 import { PageTitle } from "@/components/Titles";
-import { SUBJECT_LABELS } from "../../_components/labels";
+import { SUBJECT_LABELS, screeningSubject } from "../../_components/labels";
 import MatchResults from "../../_components/match-results";
 import { Field } from "@/components/Fields";
 
@@ -54,7 +54,7 @@ const MatchDetailPage = async ({ params }) => {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <PageTitle title={screening.name} description={`Тулгасан: ${formatDateTime(screening.createdAt)}`} />
+        <PageTitle title={screeningSubject(screening)} description={`Тулгасан: ${formatDateTime(screening.createdAt)}`} />
         <TextLink href="/organizations/match">← Шинэ тулгалт</TextLink>
       </div>
       <Card title="Хайсан мэдээлэл">

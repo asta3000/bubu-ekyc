@@ -73,6 +73,7 @@ const MatchPage = async ({ searchParams }) => {
       select: {
         id: true,
         name: true,
+        identifier: true,
         subjectType: true,
         matchCount: true,
         topScore: true,

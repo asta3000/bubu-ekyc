@@ -3,7 +3,7 @@ import { Badge } from "@/components/Badges";
 import { EmptyState } from "@/components/Messages";
 import { formatDateTime, personName } from "@/lib/format";
 import { Cell, Table } from "@/components/Tables";
-import { SUBJECT_LABELS, scoreLevel } from "./labels";
+import { SUBJECT_LABELS, scoreLevel, screeningSubject } from "./labels";
 
 // Тулгалтын түүх. showOrganization: админд байгууллагын баганыг харуулна.
 const MatchHistory = ({ screenings, showOrganization }) => {
@@ -17,7 +17,7 @@ const MatchHistory = ({ screenings, showOrganization }) => {
           <Cell className="whitespace-nowrap text-gray-600">{formatDateTime(screening.createdAt)}</Cell>
           <Cell>
             <Link href={`/organizations/match/${screening.id}`} className="font-medium text-blue-600 hover:underline">
-              {screening.name}
+              {screeningSubject(screening)}
             </Link>
           </Cell>
           <Cell className="text-gray-600">{SUBJECT_LABELS[screening.subjectType] ?? "Бүгд"}</Cell>

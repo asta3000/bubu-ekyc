@@ -18,7 +18,7 @@ export async function POST(request, ctx) {
   const { id } = await ctx.params;
   const screening = await prisma.screening.findFirst({
     where: { id, ...organizationScope(session, organization) },
-    select: { id: true, name: true, results: true },
+    select: { id: true, name: true, identifier: true, results: true },
   });
   if (!screening) return notFound("Тулгалт олдсонгүй");
   if (!Array.isArray(screening.results) || !screening.results[data.index]) {
@@ -39,7 +39,7 @@ export async function POST(request, ctx) {
     actor: session.user,
     organizationId: organization?.id ?? null,
     entity: { type: "ScreeningPrint", id: print.id },
-    summary: `"${screening.name}" тулгалтын баримт ${print.documentNumber} хэвлэв`,
+    summary: `"${screening.name || `№ ${screening.identifier}`}" тулгалтын баримт ${print.documentNumber} хэвлэв`,
     metadata: { screeningId: screening.id, matchIndex: data.index },
   });
   return Response.json(

@@ -96,6 +96,12 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
       setState(result.ok ? { errors: {}, batch: { results: result.results, errors: result.errors } } : { errors: result.errors });
     } else {
       const data = { ...Object.fromEntries(form), sources: form.getAll("sources") };
+      // Нэр, дугаарын аль нь ч хоосон бол хүсэлт илгээхгүй (багцын тоо хасагдахгүй)
+      if (!String(data.name ?? "").trim() && !String(data.identifier ?? "").trim()) {
+        setPending(false);
+        setState({ errors: { name: "Нэр эсвэл бичиг баримтын дугаарын аль нэгийг оруулна уу" } });
+        return;
+      }
       result = await withOverageConfirm((payOverage) =>
         sendJson("/api/organizations/match", "POST", { ...data, payOverage }),
       );
@@ -124,7 +130,7 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
         description={
           mode === "batch"
             ? "Загварыг татаж аваад харилцагчдын мэдээллийг мөр бүрт оруулна. Мөр бүр тусдаа тулгалт болж түүхэнд хадгалагдана."
-            : "Нэр заавал. Төрсөн огноо, улс, бичиг баримтын дугаар оруулбал тохирлыг нарийвчилж, хуурамч тохирлыг багасгана."
+            : "Нэр эсвэл бичиг баримтын дугаарын аль нэгийг оруулна. Нэрээр хайхад төрсөн огноо, улс, дугаар нэмбэл тохирлыг нарийвчилж, хуурамч тохирлыг багасгана. Зөвхөн дугаараар хайвал дугаар нь таарсан бичлэгийг л олно."
         }
       >
         <div className="mb-4 inline-grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="tablist">
@@ -188,7 +194,6 @@ const MatchForm = ({ countries, sources, defaults = {}, defaultThreshold = 85 })
                 maxLength={200}
                 error={state.errors.name}
                 autoFocus
-                required
               />
             </div>
             {/* Жагсаалтууд зөвхөн хувь хүний төрсөн огноог агуулдаг */}

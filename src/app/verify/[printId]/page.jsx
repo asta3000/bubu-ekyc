@@ -7,6 +7,7 @@ import { SYSTEM_NAME } from "@/lib/system";
 import { Card } from "@/components/Cards";
 import { Loading } from "@/components/Messages";
 import { InlineField } from "@/components/Fields";
+import { screeningSubject } from "../../organizations/_components/labels";
 
 export const metadata = { title: "Баримт шалгах" };
 
@@ -48,7 +49,7 @@ const VerifyContent = async ({ params, searchParams }) => {
         <Row label="Баримтын дугаар" value={<span className="font-mono">{documentNumber(print)}</span>} />
         <Row label="Хэвлэсэн" value={`${formatDateTime(print.createdAt)} · ${personName(print.user)}`} />
         <Row label="Байгууллага" value={print.organization?.name ?? screening.organization?.name} />
-        <Row label="Тулгасан нэр" value={screening.name} />
+        <Row label="Тулгасан" value={screeningSubject(screening)} />
         <Row label="Тулгасан" value={`${formatDateTime(screening.createdAt)} · ${personName(screening.user)}`} />
         <Row label="Тохирсон этгээд" value={match.entry.name} />
         <Row label="Жагсаалт" value={entrySourceName(match.entry)} />

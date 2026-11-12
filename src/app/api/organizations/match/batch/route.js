@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/format";
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { BATCH_MAX_SIZE, parseBatchFile } from "@/lib/screening/batch";
 import { findMatches, withEntryDetails } from "@/lib/screening/matcher";
-import { fieldErrors, matchSchema } from "@/lib/validations";
+import { fieldErrors, matchSchema, nameOrIdentifier } from "@/lib/validations";
 import { logAudit } from "@/lib/audit/log";
 
 // Мөр бүр тусдаа тулгалт тул олон мөртэй файлд хугацаа их шаардана
@@ -22,7 +22,9 @@ export const maxDuration = 300;
 
 const CONCURRENCY = 5;
 const optionsSchema = matchSchema.pick({ sources: true, threshold: true });
-const rowSchema = matchSchema.pick({ name: true, subjectType: true, birthDate: true, country: true, identifier: true });
+const rowSchema = matchSchema
+  .pick({ name: true, subjectType: true, birthDate: true, country: true, identifier: true })
+  .superRefine(nameOrIdentifier);
 
 // Багцын тоо файлын мөрөнд хүрэлцэхгүй бол эхлээд хэрэглэгчээс зөвшөөрөл авна (юу ч тулгахгүй).
 // Хүрэлцэхгүй тоог задгай үнээр хэтэвчнээс төлнө.
@@ -72,7 +74,7 @@ export async function POST(request) {
   for (const { row, input } of parsed.rows) {
     const valid = rowSchema.safeParse(input);
     if (valid.success) rows.push({ row, query: valid.data });
-    else errors.push({ row, name: input.name, message: valid.error.issues[0].message });
+    else errors.push({ row, name: input.name || input.identifier, message: valid.error.issues[0].message });
   }
   if (!rows.length) return Response.json({ results: [], errors });
 
@@ -100,7 +102,7 @@ export async function POST(request) {
     } catch (err) {
       if (!(err instanceof UsageError)) throw err;
       usageError ??= err;
-      errors.push({ row, name: query.name, message: `Тулгаагүй: ${err.message}` });
+      errors.push({ row, name: query.name ?? query.identifier, message: `Тулгаагүй: ${err.message}` });
       return;
     }
 
@@ -111,6 +113,7 @@ export async function POST(request) {
       const screening = await prisma.screening.create({
         data: {
           ...query,
+          name: query.name ?? "",
           sources,
           threshold: options.data.threshold,
           userId: session.user.id,
@@ -122,12 +125,12 @@ export async function POST(request) {
         select: { id: true },
       });
       await attachUsage(usage, screening.id);
-      results.push({ row, name: query.name, screeningId: screening.id, matchCount: matches.length, topScore: matches[0]?.score ?? 0 });
+      results.push({ row, name: query.name ?? query.identifier, screeningId: screening.id, matchCount: matches.length, topScore: matches[0]?.score ?? 0 });
     } catch (err) {
       // Тулгалт хийгдээгүй тул ашиглалтыг буцааж, бусад мөрийг үргэлжлүүлнэ
       await refundUsage(usage);
       console.error("[match/batch]", err);
-      errors.push({ row, name: query.name, message: "Тулгалт амжилтгүй болсон" });
+      errors.push({ row, name: query.name ?? query.identifier, message: "Тулгалт амжилтгүй болсон" });
     }
   };
 
@@ -139,7 +142,7 @@ export async function POST(request) {
   // Нэг ч мөр тулгаагүй (багцгүй г.м.) бол энгийн тулгалт шиг алдаа буцаана
   if (usageError && !results.length) return usageErrorResponse(usageError);
   for (const rest of rows.slice(next)) {
-    errors.push({ row: rest.row, name: rest.query.name, message: `Тулгаагүй: ${usageError.message}` });
+    errors.push({ row: rest.row, name: rest.query.name ?? rest.query.identifier, message: `Тулгаагүй: ${usageError.message}` });
   }
 
   errors.sort((a, b) => a.row - b.row);

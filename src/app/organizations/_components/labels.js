@@ -23,3 +23,7 @@ export const scoreLevel = (score) =>
     : score >= 85
       ? { label: "Дунд", tone: "amber" }
       : { label: "Бага", tone: "gray" };
+
+// Тулгалтын харагдах нэр: зөвхөн бичиг баримтын дугаараар хайсан бол нэр хоосон тул дугаарыг
+export const screeningSubject = (screening) =>
+  screening.name || (screening.identifier ? `№ ${screening.identifier}` : "—");

@@ -4,7 +4,7 @@ import { allowedSources, lockedSourcesError } from "@/lib/billing/addons";
 import { UsageError, attachUsage, consumeService, refundUsage, usageErrorResponse } from "@/lib/billing/usage";
 import { requireOrganizationApi } from "@/lib/organization-access";
 import { findMatches, withEntryDetails } from "@/lib/screening/matcher";
-import { matchSchema } from "@/lib/validations";
+import { matchRequestSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit/log";
 
 // Хүйтэн эхлэлд хоригийн бүх бичлэгийг санах ойд ачаална
@@ -16,7 +16,7 @@ export async function POST(request) {
   const { error, session, organization } = await requireOrganizationApi();
   if (error) return error;
 
-  const { data, error: invalid } = await parseBody(request, matchSchema);
+  const { data, error: invalid } = await parseBody(request, matchRequestSchema);
   if (invalid) return invalid;
   const { payOverage, ...query } = data;
 
@@ -46,6 +46,8 @@ export async function POST(request) {
     const screening = await prisma.screening.create({
       data: {
         ...query,
+        // Зөвхөн дугаараар хайсан бол нэр хоосон
+        name: query.name ?? "",
         userId: session.user.id,
         organizationId: organization?.id ?? null,
         matchCount: results.length,
@@ -60,7 +62,7 @@ export async function POST(request) {
       actor: session.user,
       organizationId: organization?.id ?? null,
       entity: { type: "Screening", id: screening.id },
-      summary: `"${query.name}"-г тулгав: ${results.length ? `${results.length} тохирол, дээд оноо ${results[0].score}` : "тохиролгүй"}`,
+      summary: `"${query.name ?? `№ ${query.identifier}`}"-г тулгав: ${results.length ? `${results.length} тохирол, дээд оноо ${results[0].score}` : "тохиролгүй"}`,
       metadata: { sources: query.sources, threshold: query.threshold, charge: usage?.charge ?? null },
     });
     return Response.json({ id: screening.id, results });

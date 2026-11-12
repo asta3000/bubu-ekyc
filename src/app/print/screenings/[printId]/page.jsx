@@ -123,7 +123,7 @@ const PrintContent = async ({ params }) => {
 
         <Section title="Тулгалтын оролт">
           <Fields columns={2}>
-            <Field label="Нэр" value={screening.name} />
+            <Field label="Нэр" value={screening.name || "— (дугаараар хайсан)"} />
             <Field label="Төрөл" value={SUBJECT_LABELS[screening.subjectType] ?? "Бүгд"} />
             <Field label="Төрсөн он/огноо" value={screening.birthDate} />
             <Field label="Улс" value={countryLabel(screening.country)} />

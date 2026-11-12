@@ -31,7 +31,7 @@ function checkCountry(query, entry) {
 const hasIdentifier = (key, entry) =>
   entry.identifierKeys.has(key) || entry.identifierKeys.has(key.replace(/^[A-Z]+/, ""));
 
-// Тулгалт хийнэ. Нэр заавал, бусад нь заавал биш. sources-д CUSTOM байвал
+// Тулгалт хийнэ. Нэр эсвэл бичиг баримтын дугаарын аль нэг заавал, бусад нь заавал биш. sources-д CUSTOM байвал
 // organizationId-ийн өөрийн жагсаалтуудыг нэмж тулгана.
 // Буцаах: [{ entryId, score, nameScore, matchedName, checks: { birthDate, country, identifier } }]
 export async function findMatches({ name, subjectType, birthDate, country, identifier, sources, threshold, organizationId }) {
@@ -39,7 +39,8 @@ export async function findMatches({ name, subjectType, birthDate, country, ident
   const stopWords = new Set(config.stopWords);
   const adjust = adjustments(config);
   const bonus = maxBonus(config);
-  const queryNames = transliterations(name).map((n) => prepareName(n, stopWords)).filter((n) => n.tokens.length);
+  // Зөвхөн дугаараар хайвал нэрийн оноо 0 тул дугаар таарсан бичлэг л үлдэнэ
+  const queryNames = name ? transliterations(name).map((n) => prepareName(n, stopWords)).filter((n) => n.tokens.length) : [];
   const dob = birthDate ? parseBirthDates([birthDate]) : null;
   const queryDob = dob && { year: [...dob.years][0], date: [...dob.dates][0] };
   const queryCountry = country ? { code: country, names: countryNames(country) } : null;
