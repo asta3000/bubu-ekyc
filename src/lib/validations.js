@@ -163,6 +163,14 @@ export const referralRateSchema = z.coerce
   .max(50, { error: "Хувь 0-50 хооронд байна" });
 
 // Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо (системийн тохиргоо)
+export const freePlanSettingsSchema = z.object({
+  freeRenewalLimit: z.coerce
+    .number({ error: "Тоо оруулна уу" })
+    .int({ error: "Бүхэл тоо оруулна уу" })
+    .min(0, { error: "0-100 хооронд байна" })
+    .max(100, { error: "0-100 хооронд байна" }),
+});
+
 export const registrationSettingsSchema = z.object({
   uncontractedUserLimit: z.coerce
     .number({ error: "Тоо оруулна уу" })

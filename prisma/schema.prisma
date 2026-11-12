@@ -735,6 +735,8 @@ model SystemSetting {
   referralSecondRate    Int?
   // Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо. Хоосон бол 3.
   uncontractedUserLimit Int?
+  // Үнэгүй (суурь үнэ 0) багцыг анхны идэвхжүүлэлтээс хойш сунгах дээд тоо. Хоосон бол 2.
+  freeRenewalLimit      Int?
   updatedById           String?
   updatedAt             DateTime @updatedAt
 }

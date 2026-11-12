@@ -240,8 +240,10 @@ const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPay
 
 // Хугацаатай багцын автомат сунгалтын мэдээлэл. renewalPackage: идэвхтэй багцын одоогийн
 // нөхцөл (багц идэвхгүй болсон бол null тул сунгагдахгүй).
-const RenewalNotice = ({ subscription, renewalPackage, balance }) => {
+const RenewalNotice = ({ subscription, renewalPackage, balance, freePlan }) => {
   if (!subscription.expiresAt) return null;
+  // Үнэгүй багцын сунгалтын эрх дууссан бол дээрх мэдэгдэл хангалттай
+  if (subscription.basePrice === 0 && freePlan.exhausted) return null;
   if (!renewalPackage) {
     return <Message error="Энэ багц идэвхгүй болсон тул хугацаа дуусахад автоматаар сунгагдахгүй." />;
   }
@@ -263,7 +265,7 @@ const RenewalNotice = ({ subscription, renewalPackage, balance }) => {
 
 // Идэвхтэй багцын үйлчилгээ бүрийн үлдэгдэл
 // onRenew: идэвхтэй багцаа одоо гараар сунгах (багц идэвхгүй болсон бол товч гарахгүй)
-const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, onRenew }) => {
+const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, freePlan, onRenew }) => {
   if (!subscription) {
     return (
       <Card title="Идэвхтэй багц">
@@ -271,7 +273,7 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, onR
           error={
             awaiting
               ? `"${awaiting.packageName}" багцын хугацаа ${formatDate(awaiting.expiresAt)}-нд дууссан. Хэтэвч хүрэлцээгүй тул сунгагдаагүй, үйлчилгээ ашиглах боломжгүй.`
-              : "Идэвхтэй багц байхгүй тул үйлчилгээ ашиглах боломжгүй. Доороос багц сонгоно уу."
+              : (freePlan.endedMessage ?? "Идэвхтэй багц байхгүй тул үйлчилгээ ашиглах боломжгүй. Доороос багц сонгоно уу.")
           }
         />
       </Card>
@@ -293,7 +295,15 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, onR
             </Button>
           </div>
         )}
-        <RenewalNotice subscription={subscription} renewalPackage={renewalPackage} balance={balance} />
+        {subscription.basePrice === 0 && (
+          <p className={`rounded-md px-3 py-2 text-sm ${freePlan.exhausted ? "bg-amber-50 text-amber-800" : "bg-gray-50 text-gray-700"}`}>
+            Үнэгүй багц: {freePlan.used} / {freePlan.allowed} удаа ашигласан.{" "}
+            {freePlan.exhausted
+              ? "Энэ удаа сүүлийнх тул хугацаа дуусахад сунгагдахгүй."
+              : `Дахин ${freePlan.allowed - freePlan.used} удаа сунгагдана.`}
+          </p>
+        )}
+        <RenewalNotice subscription={subscription} renewalPackage={renewalPackage} balance={balance} freePlan={freePlan} />
         {subscription.items.map((item) => {
           const service = billableService(item.service);
           const remaining = Math.max(0, item.quota - item.used);
@@ -560,6 +570,7 @@ const BillingClient = ({
   addons,
   awaiting,
   contractSigned,
+  freePlan,
 }) => {
   // { type: "topup" } | { type: "purchase", pkg } | { type: "payment", id }
   const [modal, setModal] = useState(null);
@@ -614,6 +625,7 @@ const BillingClient = ({
           renewalPackage={renewalPackage}
           balance={balance}
           awaiting={awaiting?.subscription}
+          freePlan={freePlan}
           onRenew={() => setModal({ type: "purchase", pkg: renewalPackage, renew: true })}
         />
         <Card title="Хэтэвч">
@@ -663,6 +675,8 @@ const BillingClient = ({
                 </div>
                 {requiresContract(pkg) && !contractSigned ? (
                   <p className="text-center text-xs text-gray-500">Гэрээ байгуулсны дараа идэвхжүүлнэ</p>
+                ) : pkg.basePrice === 0 && freePlan.exhausted ? (
+                  <p className="text-center text-xs text-gray-500">Үнэгүй багцын ашиглах эрх дууссан</p>
                 ) : pkg.id === renewalPackage?.id ? (
                   <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg, renew: true })}>
                     Сунгах

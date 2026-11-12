@@ -1,3 +1,4 @@
+import { freeRenewalLimit } from "@/lib/billing/free-plan";
 import { secondReferralRate } from "@/lib/billing/referrals";
 import { uncontractedUserLimit } from "@/lib/organizations";
 import { getMatchingConfig } from "@/lib/screening/matching-settings";
@@ -5,6 +6,7 @@ import { getSystemSettings } from "@/lib/system";
 import { requireAdminPage } from "@/lib/session";
 import { PageTitle } from "@/components/Titles";
 import MatchingSettings from "./matching-settings";
+import FreePlanSettings from "./free-plan-settings";
 import ReferralSettings from "./referral-settings";
 import RegistrationSettings from "./registration-settings";
 import SettingsForm from "./settings-form";
@@ -13,11 +15,12 @@ export const metadata = { title: "Тохиргоо" };
 
 const SettingsPage = async () => {
   await requireAdminPage();
-  const [settings, matching, secondRate, userLimit] = await Promise.all([
+  const [settings, matching, secondRate, userLimit, freeLimit] = await Promise.all([
     getSystemSettings(),
     getMatchingConfig(),
     secondReferralRate(),
     uncontractedUserLimit(),
+    freeRenewalLimit(),
   ]);
 
   return (
@@ -36,6 +39,7 @@ const SettingsPage = async () => {
         }}
       />
       <RegistrationSettings uncontractedUserLimit={userLimit} />
+      <FreePlanSettings freeRenewalLimit={freeLimit} />
       <ReferralSettings secondRate={secondRate} />
       <h2 className="pt-2 text-lg font-semibold">Хориг тулгалтын оноо</h2>
       <MatchingSettings initial={matching} />

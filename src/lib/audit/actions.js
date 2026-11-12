@@ -93,6 +93,7 @@ export const AUDIT_ACTIONS = {
   "settings.matching_reset": { label: "Тулгалтын оноог анхны утгад буцаасан" },
   "settings.referral": { label: "Санал болголтын хувь өөрчилсөн" },
   "settings.registration": { label: "Бүртгэлийн тохиргоо өөрчилсөн" },
+  "settings.free_plan": { label: "Үнэгүй багцын сунгалтын тоо өөрчилсөн" },
 };
 
 export const auditCategory = (action) => action.split(".")[0];

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/format";
 import { includesQuota, serviceName } from "./services";
+import { freePlanEnded } from "./free-plan";
 import { awaitingRenewal, renewDue } from "./renewals";
 import { activeSubscription } from "./subscriptions";
 import { InsufficientFundsError, changeBalance } from "./wallet";
@@ -19,6 +20,16 @@ export class UsageError extends Error {
 // API-ийн хариу. Төлбөр шаардлагатай тул 402.
 export const usageErrorResponse = (error) =>
   Response.json({ error: error.message, code: error.code, ...error.details }, { status: 402 });
+
+// Идэвхтэй багцгүй үеийн шалтгаан: хэтэвч хүрэлцээгүйгээс сунгалт хүлээгдэж буй, үнэгүй
+// багцын эрх дууссан, эсвэл ердөө багцгүй
+export async function noSubscriptionMessage(organizationId) {
+  const awaiting = (await awaitingRenewal(organizationId))?.subscription;
+  if (awaiting) {
+    return `"${awaiting.packageName}" багцын хугацаа дууссан бөгөөд хэтэвчний үлдэгдэл хүрэлцээгүй тул сунгагдсангүй. Хэтэвчинд ${formatMoney(awaiting.price)}-өөс доошгүй болтол цэнэглэхэд автоматаар сунгагдана.`;
+  }
+  return (await freePlanEnded(organizationId)) ?? "Идэвхтэй багц байхгүй байна. \"Багц, төлбөр\" хэсгээс багц сонгоно уу.";
+}
 
 // Байгууллагын үйлчилгээ ашиглах эрхийн одоогийн байдал (хуудсанд харуулахад)
 export async function serviceAllowance(organizationId, service) {
@@ -46,13 +57,7 @@ export async function consumeService({ organizationId, service, userId, payOvera
   await renewDue(organizationId);
   const subscription = await activeSubscription(organizationId);
   if (!subscription) {
-    const awaiting = (await awaitingRenewal(organizationId))?.subscription;
-    throw new UsageError(
-      "NO_SUBSCRIPTION",
-      awaiting
-        ? `"${awaiting.packageName}" багцын хугацаа дууссан бөгөөд хэтэвчний үлдэгдэл хүрэлцээгүй тул сунгагдсангүй. Хэтэвчинд ${formatMoney(awaiting.price)}-өөс доошгүй болтол цэнэглэхэд автоматаар сунгагдана.`
-        : "Идэвхтэй багц байхгүй байна. \"Багц, төлбөр\" хэсгээс багц сонгоно уу.",
-    );
+    throw new UsageError("NO_SUBSCRIPTION", await noSubscriptionMessage(organizationId));
   }
   const item = subscription.items.find((i) => i.service === service);
   if (!item) {

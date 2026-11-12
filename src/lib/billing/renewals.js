@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit/log";
 import { formatDate, formatMoney } from "@/lib/format";
 import { sanctionSource } from "@/lib/sanctions/sources";
+import { freePlanBlock } from "./free-plan";
 import { LOCKED_TRANSACTION, hasPendingPurchase, uniqueReference } from "./payments";
 import { activateSubscription, activeSubscription, contractBlocks, createSubscription } from "./subscriptions";
 import { changeBalance, getWallet, lockWallet } from "./wallet";
@@ -38,9 +39,10 @@ export async function renewExpiredSubscription(organizationId) {
     const pkg = previous.packageId
       ? await tx.package.findFirst({ where: { id: previous.packageId, status: "ACTIVE" }, include: { items: true } })
       : null;
-    // Багц гэрээ шаарддаг болсон бол гэрээгүй байгууллагад сунгахгүй
+    // Багц гэрээ шаарддаг болсон бол гэрээгүй байгууллагад, үнэгүй багцын сунгалтын эрх
+    // дууссан бол сунгахгүй
     const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
-    if (!pkg || contractBlocks(pkg, organization)) {
+    if (!pkg || contractBlocks(pkg, organization) || (await freePlanBlock(pkg, organizationId, tx))) {
       await end();
       return null;
     }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { billableService, includesQuota } from "@/lib/billing/services";
-import { serviceAllowance } from "@/lib/billing/usage";
+import { noSubscriptionMessage, serviceAllowance } from "@/lib/billing/usage";
 import { formatMoney } from "@/lib/format";
 
 const BILLING_LINK = (
@@ -15,10 +15,10 @@ const TONES = {
   red: { banner: "bg-red-50 text-red-700", card: "border-red-200 bg-red-50 text-red-800" },
 };
 
-// Үйлчилгээний багцын төлөв: { tone, count?, label?, text }
-function allowanceState({ subscription, item, remaining }, unit) {
+// Үйлчилгээний багцын төлөв: { tone, count?, label?, text }. reason: багцгүй үеийн шалтгаан
+function allowanceState({ subscription, item, remaining }, unit, reason) {
   if (!subscription) {
-    return { tone: "red", text: <>Идэвхтэй багц байхгүй тул ашиглах боломжгүй. {BILLING_LINK} хэсгээс багц сонгоно уу.</> };
+    return { tone: "red", text: <>{reason} {BILLING_LINK}</> };
   }
   if (!item) return { tone: "red", text: <>Таны багцад энэ үйлчилгээ ороогүй. {BILLING_LINK}</> };
   if (!includesQuota(subscription.basePrice, item.quota)) {
@@ -58,7 +58,9 @@ function allowanceState({ subscription, item, remaining }, unit) {
 // size="large": гарчгийн баруун талд (PageTitle aside) том тоогоор харуулна
 const ServiceAllowance = async ({ organization, service, size = "banner" }) => {
   if (!organization) return null;
-  const state = allowanceState(await serviceAllowance(organization.id, service), billableService(service)?.unit ?? "");
+  const allowance = await serviceAllowance(organization.id, service);
+  const reason = allowance.subscription ? null : await noSubscriptionMessage(organization.id);
+  const state = allowanceState(allowance, billableService(service)?.unit ?? "", reason);
   const tone = TONES[state.tone];
 
   if (size !== "large") return <p className={`rounded-lg px-4 py-2 text-sm ${tone.banner}`}>{state.text}</p>;

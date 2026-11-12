@@ -3,6 +3,7 @@ import { uniqueCode } from "@/lib/codes";
 import { formatMoney } from "@/lib/format";
 import { cancelInvoice, createInvoice, isQpayConfigured, paidAmount } from "./qpay";
 import { sendTopupReceipt } from "./documents";
+import { freePlanBlock } from "./free-plan";
 import { grantReferralReward } from "./referrals";
 import { CONTRACT_REQUIRED_MESSAGE, activateSubscription, contractBlocks, createSubscription } from "./subscriptions";
 import { evaluateCoupon, redeemCoupon, releaseCoupon } from "./coupons";
@@ -143,6 +144,9 @@ export async function purchasePackage({ organizationId, userId, packageId, metho
   if (contractBlocks(pkg, organization)) {
     throw new PaymentError("Энэ багцыг гэрээ байгуулсан байгууллага л идэвхжүүлнэ. Админтай холбогдож гэрээ байгуулна уу.");
   }
+  // Үнэгүй багцыг сунгах эрх дууссан бол дахин идэвхжүүлэхгүй
+  const freeBlocked = await freePlanBlock(pkg, organizationId);
+  if (freeBlocked) throw new PaymentError(freeBlocked);
 
   const result = await prisma.$transaction(async (tx) => {
     await lockWallet(tx, organizationId);

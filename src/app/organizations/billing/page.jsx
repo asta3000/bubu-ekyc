@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { activeBankAccounts } from "@/lib/billing/bank-accounts";
+import { freePlanEnded, freePlanUsage } from "@/lib/billing/free-plan";
 import { minTopupAmount } from "@/lib/billing/payments";
 import { secondReferralRate } from "@/lib/billing/referrals";
 import { isQpayConfigured } from "@/lib/billing/qpay";
@@ -142,6 +143,11 @@ const BillingPage = async () => {
     addonOffers(organization.id),
     awaitingRenewal(organization.id),
   ]);
+  // Үнэгүй багцын ашиглалт ба (идэвхтэй багцгүй үед) эрх дууссаны мессеж
+  const freePlan = {
+    ...(await freePlanUsage(organization.id)),
+    endedMessage: subscription ? null : await freePlanEnded(organization.id),
+  };
 
   return (
     <>
@@ -159,6 +165,7 @@ const BillingPage = async () => {
         addons={addons}
         awaiting={awaiting}
         contractSigned={organization.contractSigned}
+        freePlan={freePlan}
       />
     </>
   );
