@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { annualPlanSettings } from "@/lib/billing/annual-plan";
 import { activeBankAccounts } from "@/lib/billing/bank-accounts";
 import { freePlanEnded, freePlanUsage } from "@/lib/billing/free-plan";
+import { pendingPlanChanges, planChangeOptions } from "@/lib/billing/plan-changes";
 import { minTopupAmount } from "@/lib/billing/payments";
 import { secondReferralRate } from "@/lib/billing/referrals";
 import { isQpayConfigured } from "@/lib/billing/qpay";
@@ -166,6 +168,11 @@ const BillingPage = async () => {
         awaiting={awaiting}
         contractSigned={organization.contractSigned}
         freePlan={freePlan}
+        annual={await annualPlanSettings()}
+        held={wallet.held}
+        planChanges={await pendingPlanChanges(subscription)}
+        planOptions={await planChangeOptions(organization.id, subscription)}
+        canManage={session.user.role === "ORG_ADMIN"}
       />
     </>
   );

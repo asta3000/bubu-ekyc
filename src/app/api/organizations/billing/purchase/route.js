@@ -32,9 +32,9 @@ export async function POST(request) {
       organizationId: organization.id,
       entity: { type: "Subscription", id: subscription.id },
       summary:
-        `"${subscription.packageName}" багц ` +
+        `"${subscription.packageName}" багц${subscription.annual ? " (жилээр)" : ""} ` +
         (subscription.status === "ACTIVE" ? "идэвхжүүлэв" : `авахаар төлбөр үүсгэв (${PAYMENT_METHODS[data.method]})`),
-      metadata: { method: data.method, couponCode: data.couponCode, paymentId: payment?.id ?? null },
+      metadata: { method: data.method, period: data.period, couponCode: data.couponCode, paymentId: payment?.id ?? null },
     });
     return Response.json(
       { active: subscription.status === "ACTIVE", paymentId: payment?.status === "PENDING" ? payment.id : null },

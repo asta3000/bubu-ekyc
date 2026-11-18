@@ -19,13 +19,13 @@ const RegistrationSettings = ({ uncontractedUserLimit }) => {
     <Card
       title="Бүртгэл"
       description="Гэрээ байгуулаагүй байгууллагад харилцагчийн дугаараар бүртгүүлж нэгдэх хэрэглэгчийн дээд тоо (байгууллагыг бүртгэсэн хэрэглэгч ч тоонд орно). Гэрээ байгуулсан байгууллагад хязгааргүй. Өмнө бүртгэгдсэн хэрэглэгчдэд нөлөөлөхгүй."
-      className="w-full"
+      className="flex h-full w-full flex-col"
     >
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={handleSubmit} className="mt-auto flex flex-wrap items-end gap-3">
         <div className="w-full">
           <Message error={errors.form} success={success} />
         </div>
-        <div className="w-64">
+        <div className="min-w-40 flex-1">
           <Input
             label="Гэрээгүй байгууллагын хэрэглэгчийн дээд тоо"
             name="uncontractedUserLimit"
@@ -37,7 +37,7 @@ const RegistrationSettings = ({ uncontractedUserLimit }) => {
             required
           />
         </div>
-        <div className="w-40">
+        <div className="w-32">
           <PrimaryButton pending={pending}>Хадгалах</PrimaryButton>
         </div>
       </form>

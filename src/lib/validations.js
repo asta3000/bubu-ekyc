@@ -163,6 +163,19 @@ export const referralRateSchema = z.coerce
   .max(50, { error: "Хувь 0-50 хооронд байна" });
 
 // Гэрээ байгуулаагүй байгууллагад бүртгүүлэх хэрэглэгчийн дээд тоо (системийн тохиргоо)
+export const annualPlanSettingsSchema = z.object({
+  annualDiscountRate: z.coerce
+    .number({ error: "Хувь оруулна уу" })
+    .int({ error: "Бүхэл тоо оруулна уу" })
+    .min(0, { error: "0-100 хооронд байна" })
+    .max(100, { error: "0-100 хооронд байна" }),
+  annualDurationDays: z.coerce
+    .number({ error: "Хоног оруулна уу" })
+    .int({ error: "Бүхэл тоо оруулна уу" })
+    .min(1, { error: "1-3650 хооронд байна" })
+    .max(3650, { error: "1-3650 хооронд байна" }),
+});
+
 export const freePlanSettingsSchema = z.object({
   freeRenewalLimit: z.coerce
     .number({ error: "Тоо оруулна уу" })
@@ -402,10 +415,14 @@ export const topupSchema = z.object({
 
 const couponCode = nullable(z.string().trim().toUpperCase().max(32, { error: "Купон код буруу байна" }));
 
+// Багцыг сараар (багцын өөрийн нөхцөл) эсвэл жилээр авах
+const billingPeriod = z.enum(["month", "year"], { error: "Хугацаа буруу байна" }).optional().default("month");
+
 export const purchaseSchema = z.object({
   packageId: z.string({ error: "Багц сонгоно уу" }).min(1, { error: "Багц сонгоно уу" }),
   method: z.enum(["WALLET", "QPAY", "BANK_TRANSFER"], { error: "Төлбөрийн арга сонгоно уу" }),
   couponCode,
+  period: billingPeriod,
 });
 
 // Улсын нэмэлт жагсаалтын (add-on) үнэ, хугацааг админ тохируулна
@@ -422,6 +439,14 @@ export const sourceAddonSchema = z.object({
 // Байгууллага нэмэлт жагсаалт хэтэвчнээс худалдаж авна
 export const addonPurchaseSchema = z.object({
   source: z.enum(ADDON_SOURCE_KEYS, { error: "Нэмэлт жагсаалт сонгоно уу" }),
+});
+
+export const autoRenewSchema = z.object({
+  autoRenew: z.boolean({ error: "Автомат сунгалтын утга буруу" }),
+});
+
+export const planChangeSchema = z.object({
+  packageId: z.string({ error: "Багц сонгоно уу" }).min(1, { error: "Багц сонгоно уу" }),
 });
 
 export const referralCodeSchema = z.object({
@@ -444,6 +469,7 @@ export const addonAutoRenewSchema = addonPurchaseSchema.extend({
 // Худалдан авахаас өмнө купоны үр дүнг урьдчилан харах
 export const couponPreviewSchema = z.object({
   packageId: z.string({ error: "Багц сонгоно уу" }).min(1, { error: "Багц сонгоно уу" }),
+  period: billingPeriod,
   couponCode: z.string({ error: "Купон код оруулна уу" }).trim().toUpperCase().min(1, { error: "Купон код оруулна уу" }).max(32),
 });
 

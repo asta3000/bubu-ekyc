@@ -1,0 +1,55 @@
+import { parseBody } from "@/lib/api";
+import { requireBillingAdminApi } from "@/lib/billing/access";
+import { PlanChangeError, cancelUpgrade, orderUpgrade } from "@/lib/billing/plan-changes";
+import { formatDate, formatMoney } from "@/lib/format";
+import { planChangeSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit/log";
+
+// Жилийн багцыг илүү үнэтэй багц руу ахиулах захиалга: үлдсэн сарын зөрүүг хэтэвчнээс барьж,
+// одоогийн сар дуусахад хэрэгжүүлнэ (ORG_ADMIN)
+export async function POST(request) {
+  const { error, session, organization } = await requireBillingAdminApi();
+  if (error) return error;
+
+  const { data, error: invalid } = await parseBody(request, planChangeSchema);
+  if (invalid) return invalid;
+
+  try {
+    const upgrade = await orderUpgrade({ organizationId: organization.id, userId: session.user.id, packageId: data.packageId });
+    const when = formatDate(upgrade.effectiveAt);
+    await logAudit({
+      action: "billing.upgrade_order",
+      actor: session.user,
+      organizationId: organization.id,
+      entity: { type: "PackageUpgrade", id: upgrade.id },
+      summary: `"${upgrade.package.name}" багц руу ахиулах захиалга өгч ${formatMoney(upgrade.amount)} барив (${when}-нд хэрэгжинэ)`,
+      metadata: { packageId: data.packageId, amount: upgrade.amount, effectiveAt: upgrade.effectiveAt },
+    });
+    return Response.json(
+      { message: `"${upgrade.package.name}" багц руу ${when}-нд ахина. ${formatMoney(upgrade.amount)} хэтэвчнээс барьлаа.` },
+      { status: 201 },
+    );
+  } catch (err) {
+    if (err instanceof PlanChangeError) return Response.json({ error: err.message }, { status: 400 });
+    throw err;
+  }
+}
+
+// Ахиулах захиалгыг цуцалж барьсан дүнг хэтэвчинд буцаана
+export async function DELETE() {
+  const { error, session, organization } = await requireBillingAdminApi();
+  if (error) return error;
+  try {
+    await cancelUpgrade({ organizationId: organization.id, userId: session.user.id });
+    await logAudit({
+      action: "billing.upgrade_cancel",
+      actor: session.user,
+      organizationId: organization.id,
+      summary: "Багц ахиулах захиалгыг цуцалж барьсан дүнг буцаав",
+    });
+    return Response.json({ message: "Ахиулах захиалга цуцлагдаж, барьсан дүн хэтэвчинд буцлаа" });
+  } catch (err) {
+    if (err instanceof PlanChangeError) return Response.json({ error: err.message }, { status: 400 });
+    throw err;
+  }
+}

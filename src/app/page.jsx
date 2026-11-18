@@ -3,11 +3,11 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ButtonLink } from "@/components/Links";
 import { Logo, LogoMark } from "@/components/Logos";
-import { billableService, includesQuota } from "@/lib/billing/services";
-import { formatMoney } from "@/lib/format";
+import { annualPlanSettings } from "@/lib/billing/annual-plan";
 import { prisma } from "@/lib/prisma";
 import { SANCTION_SOURCES } from "@/lib/sanctions/sources";
 import { getSystemInfo } from "@/lib/system";
+import PricingCards from "./_components/pricing-cards";
 
 // Нэвтрээгүй хэрэглэгчийн нүүр хуудас (вэбсайт). Нэвтэрсэн хэрэглэгчийг proxy
 // эрхийнх нь үндсэн хуудас руу шилжүүлдэг тул энд session шалгахгүй.
@@ -22,11 +22,13 @@ const NAV = [
 const FEATURES = [
   {
     title: "Хориг шалгах",
+    service: "SANCTION_SCREENING",
     text: "Хувь хүн, хуулийн этгээдийн нэрийг олон улсын хоригийн жагсаалттай тулгана. Галиг, үсгийн алдаа, нэрийн дарааллын зөрүүг ч олно.",
     icon: "M10.5 3.75a6.75 6.75 0 1 0 4.2 12.04l3.75 3.75 1.06-1.06-3.75-3.75A6.75 6.75 0 0 0 10.5 3.75Zm0 1.5a5.25 5.25 0 1 1 0 10.5 5.25 5.25 0 0 1 0-10.5Z",
   },
   {
     title: "Баримт бичиг баталгаажуулах",
+    service: "DOCUMENT_VERIFICATION",
     text: "Иргэний үнэмлэх, паспортын зургаас мэдээллийг автоматаар уншиж, хуурамч шинжийг илрүүлнэ. Сельфиг баримтын зурагтай тулгана.",
     icon: "M4.5 5.25A1.5 1.5 0 0 0 3 6.75v10.5a1.5 1.5 0 0 0 1.5 1.5h15a1.5 1.5 0 0 0 1.5-1.5V6.75a1.5 1.5 0 0 0-1.5-1.5h-15Zm0 1.5h15v10.5h-15V6.75Zm4.5 2.25a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM6 16.5c.3-1.3 1.5-2.25 3-2.25s2.7.95 3 2.25H6Zm7.5-6.75h4.5v1.5h-4.5v-1.5Zm0 3h3v1.5h-3v-1.5Z",
   },
@@ -175,6 +177,28 @@ const Hero = () => (
   </section>
 );
 
+// Ямар ч идэвхтэй багцад ороогүй үйлчилгээнд "Тун удахгүй" гэж тэмдэглэнэ. Админ багцад
+// нэмэнгүүт тэмдэг өөрөө алга болно.
+const ComingSoonContent = async ({ service }) => {
+  await connection();
+  const offered = await prisma.packageItem.findFirst({
+    where: { service, package: { status: "ACTIVE" } },
+    select: { id: true },
+  });
+  if (offered) return null;
+  return (
+    <span className="absolute top-4 right-4 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      Тун удахгүй
+    </span>
+  );
+};
+
+const ComingSoon = ({ service }) => (
+  <Suspense fallback={null}>
+    <ComingSoonContent service={service} />
+  </Suspense>
+);
+
 const Features = () => (
   <section id="features" className="scroll-mt-16 bg-white py-20">
     <div className="mx-auto max-w-6xl space-y-12 px-4">
@@ -187,8 +211,10 @@ const Features = () => (
         {FEATURES.map((feature) => (
           <div
             key={feature.title}
-            className="space-y-3 rounded-2xl border border-slate-200 p-6 transition hover:border-teal-300 hover:shadow-md"
+            className="relative space-y-3 rounded-2xl border border-slate-200 p-6 transition hover:border-teal-300 hover:shadow-md"
           >
+            {/* Багцад ороогүй үйлчилгээнд картын баруун дээд буланд */}
+            {feature.service && <ComingSoon service={feature.service} />}
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-cyan-700 text-white">
               <Icon d={feature.icon} />
             </span>
@@ -272,6 +298,7 @@ const PricingContent = async () => {
   });
 
   if (!packages.length) return null;
+  const annual = await annualPlanSettings();
 
   return (
     <section id="pricing" className="scroll-mt-16 bg-slate-50 py-20">
@@ -281,56 +308,7 @@ const PricingContent = async () => {
           title="Хэрэгцээндээ тохирох багцаа сонгоорой"
           text="Багцад багтсан тоо дууссаны дараа ашиглах бүрт задгай үнээр хэтэвчнээс тооцогдоно."
         />
-        <div className="flex flex-wrap justify-center gap-6">
-          {packages.map((pkg) => (
-            <div
-              key={pkg.id}
-              className="flex w-full flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-teal-300 hover:shadow-md sm:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-1rem)]"
-            >
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-slate-900">{pkg.name}</h3>
-                {pkg.description && <p className="text-sm text-slate-600">{pkg.description}</p>}
-              </div>
-              <p className="flex items-baseline gap-1">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {pkg.basePrice > 0 ? formatMoney(pkg.basePrice) : "Үнэгүй"}
-                </span>
-                {pkg.durationDays && <span className="text-sm text-slate-500">/ {pkg.durationDays} хоног</span>}
-              </p>
-              <ul className="flex-1 space-y-3 text-sm text-slate-700">
-                {pkg.items.map((item) => {
-                  const service = billableService(item.service);
-                  return (
-                    <li key={item.service} className="flex gap-2">
-                      <Check />
-                      <span>
-                        <span className="font-medium text-slate-900">{service?.name ?? item.service}</span>
-                        <span className="block text-slate-500">
-                          {includesQuota(pkg.basePrice, item.quota) && `${item.quota.toLocaleString("en-US")} ${service?.unit ?? ""} багтсан · `}
-                          {includesQuota(pkg.basePrice, item.quota)
-                            ? item.unitPrice > 0
-                              ? `дараа нь ${formatMoney(item.unitPrice)}/удаа`
-                              : "дараа нь ашиглахгүй"
-                            : `${formatMoney(item.unitPrice)}/удаа`}
-                        </span>
-                      </span>
-                    </li>
-                  );
-                })}
-                {pkg.basePrice === 0 && (
-                  <li className="text-xs text-slate-500">
-                    {pkg.items.some((item) => item.quota > 0)
-                      ? "Суурь үнэгүй, багцын тоо дууссаны дараа задгай үнээр төлнө."
-                      : "Суурь үнэгүй, ашиглах бүрт задгай үнээр төлнө."}
-                  </li>
-                )}
-              </ul>
-              <ButtonLink href="/register" variant="primary" className="text-center">
-                Эхлэх
-              </ButtonLink>
-            </div>
-          ))}
-        </div>
+        <PricingCards packages={packages} annual={annual} />
       </div>
     </section>
   );

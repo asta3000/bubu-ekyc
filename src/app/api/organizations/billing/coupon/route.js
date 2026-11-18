@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { fieldError, parseBody } from "@/lib/api";
 import { requireBillingApi } from "@/lib/billing/access";
+import { packageOffer } from "@/lib/billing/annual-plan";
 import { CouponError, evaluateCoupon } from "@/lib/billing/coupons";
 import { couponBenefit } from "@/lib/billing/labels";
 import { couponPreviewSchema } from "@/lib/validations";
@@ -14,11 +15,14 @@ export async function POST(request) {
   const { data, error: invalid } = await parseBody(request, couponPreviewSchema);
   if (invalid) return invalid;
 
-  const pkg = await prisma.package.findFirst({
+  const base = await prisma.package.findFirst({
     where: { id: data.packageId, status: "ACTIVE" },
-    select: { id: true, basePrice: true, durationDays: true },
+    select: { id: true, basePrice: true, durationDays: true, items: true },
   });
-  if (!pkg) return fieldError("form", "Багц олдсонгүй", 404);
+  if (!base) return fieldError("form", "Багц олдсонгүй", 404);
+  // Жилээр авах бол купоныг жилийн үнэ, хугацаанд хэрэглэнэ
+  const pkg = await packageOffer(base, data.period);
+  if (!pkg) return fieldError("form", "Энэ багцыг жилээр авах боломжгүй");
 
   try {
     const result = await evaluateCoupon(prisma, { code: data.couponCode, organizationId: organization.id, pkg });

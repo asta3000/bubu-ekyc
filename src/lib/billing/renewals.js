@@ -2,7 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit/log";
 import { formatDate, formatMoney } from "@/lib/format";
 import { sanctionSource } from "@/lib/sanctions/sources";
+import { annualPlanSettings, packageOffer } from "./annual-plan";
 import { freePlanBlock } from "./free-plan";
+import { rollAnnualPeriod } from "./plan-changes";
+import { annualTerms } from "./services";
 import { LOCKED_TRANSACTION, hasPendingPurchase, uniqueReference } from "./payments";
 import { activateSubscription, activeSubscription, contractBlocks, createSubscription } from "./subscriptions";
 import { changeBalance, getWallet, lockWallet } from "./wallet";
@@ -36,9 +39,19 @@ export async function renewExpiredSubscription(organizationId) {
       await end();
       return null;
     }
-    const pkg = previous.packageId
-      ? await tx.package.findFirst({ where: { id: previous.packageId, status: "ACTIVE" }, include: { items: true } })
+    // Автомат сунгалтыг зогсоосон бол сунгахгүй, дуусгана
+    if (!previous.autoRenew) {
+      await end();
+      return null;
+    }
+    // Бууруулах захиалгатай бол хямд багц руу (жилээр) сунгана
+    const renewalPackageId = previous.nextPackageId ?? previous.packageId;
+    const base = renewalPackageId
+      ? await tx.package.findFirst({ where: { id: renewalPackageId, status: "ACTIVE" }, include: { items: true } })
       : null;
+    // Жилээр авсан бол жилээр (тухайн үеийн жилийн үнээр) сунгана. Жилээр санал болгохоо больсон
+    // (хугацаагүй, үнэгүй болсон) бол сараар.
+    const pkg = base && ((previous.annual && (await packageOffer(base, "year", tx))) || base);
     // Багц гэрээ шаарддаг болсон бол гэрээгүй байгууллагад, үнэгүй багцын сунгалтын эрх
     // дууссан бол сунгахгүй
     const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
@@ -68,7 +81,7 @@ export async function renewExpiredSubscription(organizationId) {
         organizationId,
         amount: -pkg.basePrice,
         type: "PACKAGE_PURCHASE",
-        description: `"${pkg.name}" багцыг автоматаар сунгав`,
+        description: `"${pkg.name}" багцыг ${pkg.annual ? "жилээр " : ""}автоматаар сунгав`,
         paymentId: payment.id,
       });
     }
@@ -96,16 +109,31 @@ export async function awaitingRenewal(organizationId) {
   const now = new Date();
   const [expired, latest, settings] = await Promise.all([
     prisma.subscription.findFirst({
-      where: { organizationId, status: "ACTIVE", expiresAt: { lte: now } },
+      // Автомат сунгалтыг зогсоосон багц хүлээхгүй
+      where: { organizationId, status: "ACTIVE", autoRenew: true, expiresAt: { lte: now } },
       orderBy: { expiresAt: "desc" },
-      select: { packageName: true, expiresAt: true, package: { select: { basePrice: true, status: true } } },
+      select: {
+        packageName: true,
+        expiresAt: true,
+        annual: true,
+        package: { select: { name: true, basePrice: true, durationDays: true, status: true } },
+        nextPackage: { select: { name: true, basePrice: true, durationDays: true, status: true } },
+      },
     }),
     latestAddons(organizationId),
     prisma.sourceAddon.findMany({ where: { status: "ACTIVE" } }),
   ]);
+  // Жилээр авсан багцыг жилийн үнээр, бууруулах захиалгатай бол хямд багцаар сунгана
+  // (renewExpiredSubscription-тэй ижил)
+  const target = expired?.nextPackage ?? expired?.package;
+  const annual = expired?.annual && target ? annualTerms(target, await annualPlanSettings()) : null;
   const subscription =
-    expired?.package?.status === "ACTIVE"
-      ? { packageName: expired.packageName, expiresAt: expired.expiresAt, price: expired.package.basePrice }
+    target?.status === "ACTIVE"
+      ? {
+          packageName: expired.nextPackage ? target.name : expired.packageName,
+          expiresAt: expired.expiresAt,
+          price: annual?.price ?? target.basePrice,
+        }
       : null;
   // Нэмэлт жагсаалт идэвхтэй багц шаарддаг: багцгүй (хүлээгдэж буй ч биш) бол цэнэглэсэн ч сунгагдахгүй
   const hasPackage = Boolean(subscription || (await activeSubscription(organizationId)));
@@ -201,6 +229,8 @@ export async function renewExpiredAddons(organizationId) {
 // цэнэглэх, cron бүрт дуудагдана.
 export async function renewDue(organizationId) {
   const subscription = await renewExpiredSubscription(organizationId);
+  // Жилийн багцын сар солигдсон бол тоог шинэчилж, ахиулах захиалгыг хэрэгжүүлнэ
+  await rollAnnualPeriod(organizationId);
   const addons = await renewExpiredAddons(organizationId);
   return { subscription, addons };
 }
@@ -209,9 +239,15 @@ export async function renewDue(organizationId) {
 // Буцаах: { checked, renewed, addonsRenewed, failed }
 export async function renewAllDue() {
   const now = new Date();
-  const [subscriptions, addons] = await Promise.all([
+  const [subscriptions, annual, addons] = await Promise.all([
     prisma.subscription.findMany({
       where: { status: "ACTIVE", expiresAt: { lte: now } },
+      distinct: ["organizationId"],
+      select: { organizationId: true },
+    }),
+    // Жилийн багцуудын сар солигдох (тоо шинэчлэх, ахиулах захиалга)
+    prisma.subscription.findMany({
+      where: { status: "ACTIVE", annual: true, expiresAt: { gt: now } },
       distinct: ["organizationId"],
       select: { organizationId: true },
     }),
@@ -221,7 +257,7 @@ export async function renewAllDue() {
       select: { organizationId: true },
     }),
   ]);
-  const organizations = new Set([...subscriptions, ...addons].map((row) => row.organizationId));
+  const organizations = new Set([...subscriptions, ...annual, ...addons].map((row) => row.organizationId));
   const result = { checked: organizations.size, renewed: 0, addonsRenewed: 0, failed: 0 };
   for (const organizationId of organizations) {
     try {

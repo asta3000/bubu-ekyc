@@ -64,6 +64,12 @@ export const AUDIT_ACTIONS = {
 
   "billing.purchase": { label: "Багц авсан", org: true },
   "billing.renew_auto": { label: "Багц автоматаар сунгагдсан", org: true },
+  "billing.auto_renew": { label: "Багцын автомат сунгалт өөрчилсөн", org: true },
+  "billing.upgrade_order": { label: "Багц ахиулах захиалга өгсөн", org: true },
+  "billing.upgrade_cancel": { label: "Багц ахиулах захиалга цуцалсан", org: true },
+  "billing.upgrade_applied": { label: "Багц ахисан", org: true },
+  "billing.downgrade_order": { label: "Багц бууруулах захиалга өгсөн", org: true },
+  "billing.downgrade_cancel": { label: "Багц бууруулах захиалга цуцалсан", org: true },
   "billing.topup": { label: "Хэтэвч цэнэглэх хүсэлт", org: true },
   "billing.payment_cancel": { label: "Төлбөр цуцалсан", org: true },
   "billing.addon_purchase": { label: "Нэмэлт жагсаалт авсан", org: true },
@@ -94,6 +100,7 @@ export const AUDIT_ACTIONS = {
   "settings.referral": { label: "Санал болголтын хувь өөрчилсөн" },
   "settings.registration": { label: "Бүртгэлийн тохиргоо өөрчилсөн" },
   "settings.free_plan": { label: "Үнэгүй багцын сунгалтын тоо өөрчилсөн" },
+  "settings.annual_plan": { label: "Жилийн багцын тохиргоо өөрчилсөн" },
 };
 
 export const auditCategory = (action) => action.split(".")[0];

@@ -64,6 +64,7 @@ model Organization {
   screeningPrints       ScreeningPrint[]
   sanctionLists         SanctionList[]
   addons                OrganizationAddon[]
+  packageUpgrades       PackageUpgrade[]
   referralPromo         Promo?                 @relation("Referral", fields: [referralPromoId], references: [id], onDelete: SetNull)
   referralRewardsEarned ReferralReward[]       @relation("ReferralEarned")
   referralRewardsPaid   ReferralReward[]       @relation("ReferralPaid")
@@ -485,8 +486,10 @@ model Package {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  items         PackageItem[]
-  subscriptions Subscription[]
+  items                 PackageItem[]
+  subscriptions         Subscription[]
+  nextForSubscriptions  Subscription[]   @relation("SubscriptionNextPackage")
+  upgrades              PackageUpgrade[]
 }
 
 // Багц дахь үйлчилгээ: суурь үнэд багтах тоо ба задгай үнэ
@@ -551,6 +554,17 @@ model Subscription {
   packageName    String
   basePrice      Int
   durationDays   Int?
+  // Жилээр худалдан авсан (үнэ, хугацаа нь жилийн). Сунгалт ч жилээр, жилийн үнээр.
+  annual         Boolean             @default(false)
+  // Жилийн багцын "сар"-ын урт (багцын хугацаа, жишээ нь 30). Сар бүр үйлчилгээний тоо
+  // шинэчлэгдэнэ (ашиглаагүй тоо шилжихгүй), ахиулах захиалга сар солигдоход хэрэгжинэ.
+  periodDays     Int?
+  // Жилийн багцын одоогийн сарын эхлэл
+  periodStartsAt DateTime?
+  // Хугацаа дуусахад хэтэвчнээс автоматаар сунгах эсэх (ORG_ADMIN зогсоож болно)
+  autoRenew      Boolean             @default(true)
+  // Жилийн хугацаа дуусахад шилжих хямд багц (бууруулах захиалга)
+  nextPackageId  String?
   status         SUBSCRIPTION_STATUS @default(PENDING)
   startsAt       DateTime?
   expiresAt      DateTime?
@@ -559,12 +573,46 @@ model Subscription {
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   package      Package?           @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  nextPackage  Package?           @relation("SubscriptionNextPackage", fields: [nextPackageId], references: [id], onDelete: SetNull)
   items        SubscriptionItem[]
   payments     Payment[]
   usages       ServiceUsage[]
   redemption   CouponRedemption?
+  upgrades     PackageUpgrade[]
 
   @@index([organizationId, status])
+}
+
+enum PACKAGE_UPGRADE_STATUS {
+  // Хэтэвчнээс зөрүүг барьсан, сар солигдохыг хүлээж буй
+  PENDING
+  APPLIED
+  CANCELLED
+}
+
+// Жилийн багцыг хугацааны дундуур илүү үнэтэй багц руу ахиулах захиалга. Үлдсэн сарын үнийн
+// зөрүүг (amount) хэтэвчнээс барьж (Wallet.held), одоогийн сар дуусахад (effectiveAt) хэрэгжүүлнэ.
+model PackageUpgrade {
+  id             String                 @id @default(cuid())
+  organizationId String
+  subscriptionId String
+  packageId      String
+  // Ахисны дараах жилийн үнэ (дараагийн сунгалтад) ба барьсан зөрүү
+  annualPrice    Int
+  amount         Int
+  effectiveAt    DateTime
+  status         PACKAGE_UPGRADE_STATUS @default(PENDING)
+  createdById    String?
+  createdAt      DateTime               @default(now())
+  appliedAt      DateTime?
+  cancelledAt    DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  package      Package      @relation(fields: [packageId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([status, effectiveAt])
 }
 
 model SubscriptionItem {
@@ -587,7 +635,10 @@ model SubscriptionItem {
 model Wallet {
   id             String   @id @default(cuid())
   organizationId String   @unique
+  // Ашиглах боломжтой үлдэгдэл. Барьсан (held) дүн үүнд орохгүй.
   balance        Int      @default(0)
+  // Багц ахиулах захиалгад барьсан дүн (хэрэгжихэд зарцуулагдах, цуцлахад balance руу буцна)
+  held           Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -605,6 +656,9 @@ enum WALLET_TRANSACTION_TYPE {
   REFERRAL_BONUS
   // Нэмэлт жагсаалт (add-on) худалдан авалт
   ADDON_PURCHASE
+  // Багц ахиулах захиалгад барьсан / цуцалснаар буцаасан
+  HOLD
+  HOLD_RELEASE
 }
 
 // Хэтэвчний гүйлгээ. amount нэмэх (орлого) эсвэл хасах (зарлага) утгатай
@@ -737,6 +791,10 @@ model SystemSetting {
   uncontractedUserLimit Int?
   // Үнэгүй (суурь үнэ 0) багцыг анхны идэвхжүүлэлтээс хойш сунгах дээд тоо. Хоосон бол 2.
   freeRenewalLimit      Int?
+  // Багцыг жилээр худалдан авахад суурь үнээс хасах хөнгөлөлтийн хувь. Хоосон бол 0.
+  annualDiscountRate    Int?
+  // Жилээр худалдан авсан багцын хүчинтэй хоног. Хоосон бол 365.
+  annualDurationDays    Int?
   updatedById           String?
   updatedAt             DateTime @updatedAt
 }

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { uniqueCode } from "@/lib/codes";
 import { formatMoney } from "@/lib/format";
 import { cancelInvoice, createInvoice, isQpayConfigured, paidAmount } from "./qpay";
+import { packageOffer } from "./annual-plan";
 import { sendTopupReceipt } from "./documents";
 import { freePlanBlock } from "./free-plan";
 import { grantReferralReward } from "./referrals";
@@ -137,9 +138,12 @@ export async function createTopup({ organizationId, userId, amount, method }) {
 // Багц худалдаж авах. Төлөх дүн 0 (үнэгүй багц, 100% купон) эсвэл хэтэвчээр төлбөл шууд
 // идэвхжинэ. couponCode: үнийг хямдруулах эсвэл хугацааг сунгах купон (нэг худалдан авалтад нэг).
 // Буцаах: { subscription, payment } (payment нь QPay/банкны үед хүлээгдэж буй)
-export async function purchasePackage({ organizationId, userId, packageId, method, couponCode = null }) {
-  const pkg = await prisma.package.findFirst({ where: { id: packageId, status: "ACTIVE" }, include: { items: true } });
-  if (!pkg) throw new PaymentError("Багц олдсонгүй");
+// period: "month" (багцын өөрийн нөхцөл) эсвэл "year" (админы тохиргоогоор жилийн үнэ, хугацаа, тоо)
+export async function purchasePackage({ organizationId, userId, packageId, method, couponCode = null, period = "month" }) {
+  const base = await prisma.package.findFirst({ where: { id: packageId, status: "ACTIVE" }, include: { items: true } });
+  if (!base) throw new PaymentError("Багц олдсонгүй");
+  const pkg = await packageOffer(base, period);
+  if (!pkg) throw new PaymentError("Энэ багцыг жилээр авах боломжгүй");
   const organization = await prisma.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
   if (contractBlocks(pkg, organization)) {
     throw new PaymentError("Энэ багцыг гэрээ байгуулсан байгууллага л идэвхжүүлнэ. Админтай холбогдож гэрээ байгуулна уу.");
@@ -186,7 +190,7 @@ export async function purchasePackage({ organizationId, userId, packageId, metho
       organizationId,
       amount: -price,
       type: "PACKAGE_PURCHASE",
-      description: `"${pkg.name}" багцын суурь үнэ${coupon?.discountAmount ? ` (купон ${coupon.coupon.code})` : ""}`,
+      description: `"${pkg.name}" багцын ${pkg.annual ? "жилийн үнэ" : "суурь үнэ"}${coupon?.discountAmount ? ` (купон ${coupon.coupon.code})` : ""}`,
       paymentId: payment.id,
       userId,
     });

@@ -20,13 +20,13 @@ const FreePlanSettings = ({ freeRenewalLimit }) => {
     <Card
       title="Үнэгүй багц"
       description="Суурь үнэ 0 багцыг байгууллага анх идэвхжүүлснээс хойш хэдэн удаа сунгаж болох (автомат болон гараар). Жишээ нь 4 бол анхныхтай нийлээд 5 удаа ашиглана. Дууссаны дараа гэрээгүй байгууллагад гэрээ байгуулж, гэрээтэй байгууллагад хэтэвчээ цэнэглэж багцаа ахиулахыг санал болгоно."
-      className="w-full"
+      className="flex h-full w-full flex-col"
     >
-      <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={handleSubmit} className="mt-auto flex flex-wrap items-end gap-3">
         <div className="w-full">
           <Message error={errors.form} success={success} />
         </div>
-        <div className="w-64">
+        <div className="min-w-40 flex-1">
           <Input
             label="Сунгах дээд тоо"
             name="freeRenewalLimit"
@@ -38,7 +38,7 @@ const FreePlanSettings = ({ freeRenewalLimit }) => {
             required
           />
         </div>
-        <div className="w-40">
+        <div className="w-32">
           <PrimaryButton pending={pending}>Хадгалах</PrimaryButton>
         </div>
       </form>

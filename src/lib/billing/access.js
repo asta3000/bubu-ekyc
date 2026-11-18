@@ -9,3 +9,13 @@ export async function requireBillingApi() {
   }
   return access;
 }
+
+// Багцын тохиргоо (автомат сунгалт, ахиулах, бууруулах): зөвхөн байгууллагын админ
+export async function requireBillingAdminApi() {
+  const access = await requireBillingApi();
+  if (access.error) return access;
+  if (access.session.user.role !== "ORG_ADMIN") {
+    return { error: Response.json({ error: "Зөвхөн байгууллагын админ өөрчилнө" }, { status: 403 }) };
+  }
+  return access;
+}

@@ -25,6 +25,8 @@ export const WALLET_TRANSACTION_TYPES = {
   ADJUSTMENT: "Залруулга",
   REFERRAL_BONUS: "Санал болголтын урамшуулал",
   ADDON_PURCHASE: "Нэмэлт жагсаалт",
+  HOLD: "Багц ахиулахад барьсан",
+  HOLD_RELEASE: "Барьсныг буцаасан",
 };
 
 export const COUPON_TYPES = {

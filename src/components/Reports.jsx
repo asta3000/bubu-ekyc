@@ -3,12 +3,13 @@ import Link from "next/link";
 // Тайлангийн хуудасны нийтлэг хэсгүүд: тайлан сонгох таб, товч үзүүлэлтүүд.
 
 // tabs: [{ key, label }]. Тайлан бүр ?report=<key> хаягтай тул холбоосоор хуваалцаж болно.
-export const ReportTabs = ({ tabs, active }) => (
+// Дугаарласан дэд цэс (?<param>=<key>). Тайлан, тохиргоо зэрэг хуудсанд.
+export const ReportTabs = ({ tabs, active, param = "report" }) => (
   <nav className="flex flex-wrap gap-2">
     {tabs.map((tab, index) => (
       <Link
         key={tab.key}
-        href={`?report=${tab.key}`}
+        href={`?${param}=${tab.key}`}
         className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
           tab.key === active
             ? "border-blue-600 bg-blue-50 text-blue-700"

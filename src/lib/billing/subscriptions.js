@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requiresContract } from "./services";
-import { lockWallet } from "./wallet";
+import { lockWallet, releaseFunds } from "./wallet";
 
 // Одоо хүчинтэй багц (ACTIVE, хугацаа дуусаагүй) үйлчилгээнүүдтэйгээ
 export const activeSubscription = (organizationId, db = prisma) =>
@@ -24,6 +24,9 @@ export const createSubscription = (pkg, organizationId, db = prisma, { extraDays
       packageName: pkg.name,
       basePrice: pkg.basePrice,
       durationDays: pkg.durationDays ? pkg.durationDays + extraDays : null,
+      // packageOffer(..., "year")-аас ирсэн жилийн нөхцөл: сар бүр тоо шинэчлэгдэнэ
+      annual: Boolean(pkg.annual),
+      periodDays: pkg.annual ? pkg.periodDays : null,
       items: {
         create: pkg.items.map(({ service, quota, unitPrice }) => ({ service, quota, unitPrice })),
       },
@@ -63,6 +66,8 @@ export async function activateSubscription(tx, subscriptionId) {
   if (subscription.status !== "PENDING") return subscription;
 
   const now = new Date();
+  // Солигдож буй багцын хүлээгдэж буй ахиулах захиалгыг цуцалж, барьсан мөнгийг буцаана
+  await cancelPendingUpgrades(tx, subscription.organizationId, "Өөр багц идэвхжсэн тул ахиулах захиалга цуцлагдав");
   await tx.subscription.updateMany({
     where: { organizationId: subscription.organizationId, status: "ACTIVE" },
     data: { status: "ENDED", expiresAt: now },
@@ -72,6 +77,7 @@ export async function activateSubscription(tx, subscriptionId) {
     data: {
       status: "ACTIVE",
       startsAt: now,
+      periodStartsAt: subscription.annual ? now : null,
       expiresAt: subscription.durationDays
         ? new Date(now.getTime() + subscription.durationDays * 24 * 60 * 60 * 1000)
         : null,
@@ -106,4 +112,17 @@ export const CONTRACT_REQUIRED_MESSAGE = "Гэрээ байгуулаагүй б
 export async function subscribedServices(organizationId) {
   const subscription = await activeSubscription(organizationId);
   return subscription?.items.map((item) => item.service) ?? [];
+}
+
+// Байгууллагын хүлээгдэж буй ахиулах захиалгуудыг цуцалж барьсан дүнг үлдэгдэлд буцаана.
+// Transaction (tx) дотор, хэтэвч түгжигдсэн үед дуудна. Буцаах: цуцалсан тоо
+export async function cancelPendingUpgrades(tx, organizationId, description, { userId = null, subscriptionId } = {}) {
+  const pending = await tx.packageUpgrade.findMany({
+    where: { organizationId, status: "PENDING", ...(subscriptionId && { subscriptionId }) },
+  });
+  for (const upgrade of pending) {
+    await tx.packageUpgrade.update({ where: { id: upgrade.id }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    if (upgrade.amount > 0) await releaseFunds(tx, { organizationId, amount: upgrade.amount, description, userId });
+  }
+  return pending.length;
 }

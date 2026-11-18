@@ -9,7 +9,7 @@ import { EmptyState, Message } from "@/components/Messages";
 import { Modal } from "@/components/Modals";
 import { Cell, Table } from "@/components/Tables";
 import { PAYMENT_METHODS, PAYMENT_STATUSES, WALLET_TRANSACTION_TYPES, paymentPurpose } from "@/lib/billing/labels";
-import { billableService, includesQuota, requiresContract } from "@/lib/billing/services";
+import { annualPeriod, annualTerms, billableService, includesQuota, requiresContract } from "@/lib/billing/services";
 import { useSubmit } from "@/lib/use-submit";
 import { formatDate, formatDateTime, formatMoney, personName } from "@/lib/format";
 import PaymentInstructions from "../_components/payment-instructions";
@@ -84,7 +84,8 @@ const TopupForm = ({ qpayEnabled, minTopup, suggested = 0, onPayment, onDone }) 
   );
 };
 
-const PackageItems = ({ pkg }) => (
+// perMonth: жилээр харуулахад тоо сар бүр шинэчлэгддэгийг тэмдэглэнэ
+const PackageItems = ({ pkg, perMonth = false }) => (
   <ul className="space-y-1 text-sm">
     {pkg.items.map((item) => {
       const service = billableService(item.service);
@@ -92,7 +93,8 @@ const PackageItems = ({ pkg }) => (
         <li key={item.service} className="flex justify-between gap-2">
           <span className="text-gray-600">{service?.name ?? item.service}</span>
           <span className="text-right text-gray-900">
-            {includesQuota(pkg.basePrice, item.quota) && `${item.quota} ${service?.unit ?? ""}`}
+            {includesQuota(pkg.basePrice, item.quota) &&
+              `${item.quota.toLocaleString("en-US")} ${service?.unit ?? ""}${perMonth ? "/сар" : ""}`}
             {includesQuota(pkg.basePrice, item.quota) && item.unitPrice > 0 && " · "}
             {(item.unitPrice > 0 || !includesQuota(pkg.basePrice, item.quota)) && `${formatMoney(item.unitPrice)}/удаа`}
           </span>
@@ -103,13 +105,13 @@ const PackageItems = ({ pkg }) => (
 );
 
 // Купон код оруулж урьдчилан шалгах. applied: шалгагдсан купоны үр дүн
-const CouponField = ({ pkg, applied, onApply, onRemove, error }) => {
+const CouponField = ({ pkg, period, applied, onApply, onRemove, error }) => {
   const [code, setCode] = useState("");
   // Урьдчилан харах тул хуудсыг дахин уншихгүй
   const { errors, pending, send } = useSubmit({ refresh: false });
 
   const apply = async () => {
-    const result = await send("/api/organizations/billing/coupon", "POST", { packageId: pkg.id, couponCode: code });
+    const result = await send("/api/organizations/billing/coupon", "POST", { packageId: pkg.id, couponCode: code, period });
     if (result.ok) onApply(result);
   };
 
@@ -152,7 +154,10 @@ const CouponField = ({ pkg, applied, onApply, onRemove, error }) => {
 
 // current: одоогийн идэвхтэй багц (үлдэгдэл шилжих эсэхийг тайлбарлахад).
 // renew: идэвхтэй багцаа гараар сунгах (ижил багцыг дахин авах, шинэ хугацаа одооноос эхэлнэ).
-const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPayment, onDone }) => {
+// period "year": жилийн үнэ, хугацаа, тоогоор (annualTerms, серверийн packageOffer-той ижил тооцоо)
+const PurchaseForm = ({ pkg: base, period = "month", annual, current, renew = false, balance, qpayEnabled, onPayment, onDone }) => {
+  const terms = period === "year" ? annualTerms(base, annual) : null;
+  const pkg = terms ? { ...base, basePrice: terms.price, durationDays: terms.durationDays } : base;
   const [coupon, setCoupon] = useState(null);
   const price = coupon?.finalPrice ?? pkg.basePrice;
   const durationDays = coupon?.durationDays ?? pkg.durationDays;
@@ -172,14 +177,25 @@ const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPay
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        send("/api/organizations/billing/purchase", { packageId: pkg.id, method, couponCode: coupon?.code ?? null });
+        send("/api/organizations/billing/purchase", {
+          packageId: pkg.id,
+          method,
+          couponCode: coupon?.code ?? null,
+          period: terms ? "year" : "month",
+        });
       }}
       className="space-y-4"
     >
       <Message error={errors.form ?? errors.method} />
       <div className="space-y-2 rounded-lg bg-gray-50 p-3">
+        {terms && terms.saving > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Жилийн үнэ (хөнгөлөлтгүй)</span>
+            <span className="text-gray-400 line-through">{formatMoney(terms.fullPrice)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Суурь үнэ</span>
+          <span className="text-gray-500">{terms ? `Жилийн үнэ (−${terms.discountRate}%)` : "Суурь үнэ"}</span>
           <span className={coupon?.discountAmount ? "text-gray-400 line-through" : "font-semibold"}>
             {formatMoney(pkg.basePrice)}
           </span>
@@ -199,11 +215,12 @@ const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPay
             </span>
           </div>
         )}
-        <PackageItems pkg={pkg} />
+        <PackageItems pkg={base} perMonth={Boolean(terms)} />
       </div>
       {pkg.basePrice > 0 || pkg.durationDays ? (
         <CouponField
           pkg={pkg}
+          period={terms ? "year" : "month"}
           applied={coupon}
           onApply={changeCoupon}
           onRemove={() => changeCoupon(null)}
@@ -240,14 +257,22 @@ const PurchaseForm = ({ pkg, current, renew = false, balance, qpayEnabled, onPay
 
 // Хугацаатай багцын автомат сунгалтын мэдээлэл. renewalPackage: идэвхтэй багцын одоогийн
 // нөхцөл (багц идэвхгүй болсон бол null тул сунгагдахгүй).
-const RenewalNotice = ({ subscription, renewalPackage, balance, freePlan }) => {
+const RenewalNotice = ({ subscription, renewalPackage, balance, freePlan, annual }) => {
   if (!subscription.expiresAt) return null;
+  if (!subscription.autoRenew) {
+    return (
+      <p className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
+        Автомат сунгалт зогссон: багц {formatDate(subscription.expiresAt)}-нд дуусаад сунгагдахгүй.
+      </p>
+    );
+  }
   // Үнэгүй багцын сунгалтын эрх дууссан бол дээрх мэдэгдэл хангалттай
   if (subscription.basePrice === 0 && freePlan.exhausted) return null;
   if (!renewalPackage) {
     return <Message error="Энэ багц идэвхгүй болсон тул хугацаа дуусахад автоматаар сунгагдахгүй." />;
   }
-  const price = renewalPackage.basePrice;
+  // Жилээр авсан бол жилийн үнээр сунгана
+  const price = (subscription.annual && annualTerms(renewalPackage, annual)?.price) || renewalPackage.basePrice;
   if (balance >= price) {
     return (
       <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
@@ -265,7 +290,213 @@ const RenewalNotice = ({ subscription, renewalPackage, balance, freePlan }) => {
 
 // Идэвхтэй багцын үйлчилгээ бүрийн үлдэгдэл
 // onRenew: идэвхтэй багцаа одоо гараар сунгах (багц идэвхгүй болсон бол товч гарахгүй)
-const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, freePlan, onRenew }) => {
+// Автомат сунгалтын төлөв, жилийн багцын сар, хүлээгдэж буй ахиулах/бууруулах захиалга.
+// canManage: ORG_ADMIN л өөрчилнө
+const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade, onDowngrade }) => {
+  const { errors, success, pending, send } = useSubmit();
+  const period = annualPeriod(subscription);
+  const { upgrade, downgrade } = planChanges;
+
+  const toggleAutoRenew = () => {
+    const message = subscription.autoRenew
+      ? `Автомат сунгалтыг зогсоох уу? Багц ${formatDate(subscription.expiresAt)} хүртэл ашиглагдаад цааш сунгагдахгүй.${downgrade ? " Бууруулах захиалга мөн цуцлагдана." : ""}`
+      : "Автомат сунгалтыг сэргээх үү? Хугацаа дуусахад хэтэвчнээс суутгаж сунгана.";
+    if (window.confirm(message)) send("/api/organizations/billing/subscription", "PATCH", { autoRenew: !subscription.autoRenew });
+  };
+  const cancel = (kind, text) => {
+    if (window.confirm(text)) send(`/api/organizations/billing/subscription/${kind}`, "DELETE");
+  };
+
+  return (
+    <div className="space-y-3">
+      <Message error={errors.form} success={success} />
+      {subscription.expiresAt && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm">
+          <span className="flex items-center gap-2">
+            Автомат сунгалт:
+            {subscription.autoRenew ? <Badge tone="green">Идэвхтэй</Badge> : <Badge>Идэвхгүй</Badge>}
+          </span>
+          {canManage && (
+            <Button variant="link" onClick={toggleAutoRenew} disabled={pending}>
+              {subscription.autoRenew ? "Автомат сунгалт зогсоох" : "Автомат сунгалт сэргээх"}
+            </Button>
+          )}
+        </div>
+      )}
+      {period && (
+        <p className="text-sm text-gray-600">
+          Жилийн {period.total} сарын {period.index + 1}-р сар. Үйлчилгээний тоо {formatDate(period.end)}-нд шинэчлэгдэнэ.
+        </p>
+      )}
+      {upgrade && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          <span>
+            {formatDate(upgrade.effectiveAt)}-нд &quot;{upgrade.packageName}&quot; багц руу ахина ·{" "}
+            {formatMoney(upgrade.amount)} барьсан
+          </span>
+          {canManage && (
+            <Button
+              variant="link"
+              onClick={() => cancel("upgrade", "Ахиулах захиалгыг цуцлах уу? Барьсан дүн хэтэвчинд буцна.")}
+              disabled={pending}
+            >
+              Цуцлах
+            </Button>
+          )}
+        </div>
+      )}
+      {downgrade && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>
+            {formatDate(downgrade.effectiveAt)}-нд &quot;{downgrade.packageName}&quot; багц руу жилээр шилжинэ
+          </span>
+          {canManage && (
+            <Button variant="link" onClick={() => cancel("downgrade", "Бууруулах захиалгыг цуцлах уу?")} disabled={pending}>
+              Цуцлах
+            </Button>
+          )}
+        </div>
+      )}
+      {canManage && subscription.annual && !upgrade && !downgrade && (options.upgrades.length > 0 || options.downgrades.length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {options.upgrades.length > 0 && (
+            <Button variant="secondary" onClick={onUpgrade}>
+              Багц ахиулах
+            </Button>
+          )}
+          {options.downgrades.length > 0 && (
+            <Button variant="secondary" onClick={onDowngrade}>
+              Багц бууруулах
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Жилийн багцыг ахиулах: аль багц руу, барих зөрүү, хэрэгжих огноо
+const UpgradeForm = ({ options, balance, onDone }) => {
+  const [packageId, setPackageId] = useState(options[0]?.id ?? "");
+  const { errors, success, pending, send } = useSubmit();
+  const selected = options.find((option) => option.id === packageId);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const result = await send("/api/organizations/billing/subscription/upgrade", "POST", { packageId });
+    if (result.ok) onDone();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <Message error={errors.form ?? errors.packageId} success={success} />
+      <p className="text-sm text-gray-600">
+        Үлдсэн сарын үнийн зөрүүг хэтэвчнээс барьж, одоогийн сар дуусахад багц ахина. Захиалгыг цуцалбал барьсан дүн
+        буцна.
+      </p>
+      <div className="space-y-2">
+        {options.map((option) => (
+          <label
+            key={option.id}
+            className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 text-sm ${
+              option.id === packageId ? "border-blue-600 bg-blue-50" : "border-gray-200"
+            }`}
+          >
+            <span className="flex items-start gap-2">
+              <input
+                type="radio"
+                name="packageId"
+                value={option.id}
+                checked={option.id === packageId}
+                onChange={() => setPackageId(option.id)}
+                className="mt-1 accent-blue-600"
+              />
+              <span>
+                <span className="block font-medium text-gray-900">{option.name}</span>
+                <span className="block text-xs text-gray-500">Жилийн үнэ {formatMoney(option.annualPrice)}</span>
+              </span>
+            </span>
+            <span className="text-right">
+              <span className="block font-semibold">{formatMoney(option.amount)}</span>
+              <span className="block text-xs text-gray-500">
+                {option.months} сарын зөрүү · {formatDate(option.effectiveAt)}-нд
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+      {selected && balance < selected.amount && (
+        <Message error={`Хэтэвчний үлдэгдэл хүрэлцэхгүй (${formatMoney(selected.amount - balance)} дутуу). Эхлээд хэтэвчээ цэнэглэнэ үү.`} />
+      )}
+      <PrimaryButton pending={pending} disabled={pending || !selected || balance < selected.amount}>
+        {selected ? `${formatMoney(selected.amount)} барьж ахиулах` : "Ахиулах"}
+      </PrimaryButton>
+    </form>
+  );
+};
+
+// Жилийн багцыг хугацаа дуусахад хямд багц руу шилжүүлэх
+const DowngradeForm = ({ options, expiresAt, onDone }) => {
+  const [packageId, setPackageId] = useState(options[0]?.id ?? "");
+  const { errors, pending, send } = useSubmit();
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const result = await send("/api/organizations/billing/subscription/downgrade", "POST", { packageId });
+    if (result.ok) onDone();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <Message error={errors.form ?? errors.packageId} />
+      <p className="text-sm text-gray-600">
+        Одоогийн багц {formatDate(expiresAt)} хүртэл хэвээр ашиглагдана. Тэр өдөр сонгосон багц руу жилийн үнээр нь
+        хэтэвчнээс суутгаж шилжинэ. Автомат сунгалт асаалттай болно.
+      </p>
+      <div className="space-y-2">
+        {options.map((option) => (
+          <label
+            key={option.id}
+            className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
+              option.id === packageId ? "border-blue-600 bg-blue-50" : "border-gray-200"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="packageId"
+                value={option.id}
+                checked={option.id === packageId}
+                onChange={() => setPackageId(option.id)}
+                className="accent-blue-600"
+              />
+              <span className="font-medium text-gray-900">{option.name}</span>
+            </span>
+            <span className="text-gray-600">{formatMoney(option.annualPrice)} / жил</span>
+          </label>
+        ))}
+      </div>
+      <PrimaryButton pending={pending} disabled={pending || !packageId}>
+        Бууруулах захиалга өгөх
+      </PrimaryButton>
+    </form>
+  );
+};
+
+const SubscriptionCard = ({
+  subscription,
+  renewalPackage,
+  balance,
+  awaiting,
+  freePlan,
+  annual,
+  planChanges,
+  options,
+  canManage,
+  onUpgrade,
+  onDowngrade,
+  onRenew,
+}) => {
   if (!subscription) {
     return (
       <Card title="Идэвхтэй багц">
@@ -281,10 +512,18 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, fre
   }
   return (
     <Card
-      title={subscription.packageName}
+      title={`${subscription.packageName}${subscription.annual ? " · жилийн" : ""}`}
       description={`${formatDate(subscription.startsAt)}-с ${subscription.expiresAt ? `${formatDate(subscription.expiresAt)} хүртэл` : "хугацаагүй"}`}
     >
       <div className="space-y-4">
+        <PlanControls
+          subscription={subscription}
+          planChanges={planChanges}
+          options={options}
+          canManage={canManage}
+          onUpgrade={onUpgrade}
+          onDowngrade={onDowngrade}
+        />
         {renewalPackage && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-200 px-3 py-2">
             <p className="text-sm text-gray-600">
@@ -303,7 +542,13 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, fre
               : `Дахин ${freePlan.allowed - freePlan.used} удаа сунгагдана.`}
           </p>
         )}
-        <RenewalNotice subscription={subscription} renewalPackage={renewalPackage} balance={balance} freePlan={freePlan} />
+        <RenewalNotice
+          subscription={subscription}
+          renewalPackage={renewalPackage}
+          balance={balance}
+          freePlan={freePlan}
+          annual={annual}
+        />
         {subscription.items.map((item) => {
           const service = billableService(item.service);
           const remaining = Math.max(0, item.quota - item.used);
@@ -313,7 +558,7 @@ const SubscriptionCard = ({ subscription, renewalPackage, balance, awaiting, fre
               <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <span className="font-medium text-gray-900">{service?.name ?? item.service}</span>
                 <span className="text-gray-600">
-                  {hasQuota ? `${item.used} / ${item.quota} ашигласан · ` : ""}
+                  {hasQuota ? `${subscription.annual ? "Энэ сард " : ""}${item.used} / ${item.quota} ашигласан · ` : ""}
                   {item.carriedOver > 0 && `(+${item.carriedOver} өмнөх багцаас) · `}
                   {hasQuota && item.unitPrice === 0
                     ? "дууссаны дараа ашиглахгүй"
@@ -557,6 +802,52 @@ const PaymentDocuments = ({ payment, send, pending }) => {
   );
 };
 
+// Багцын үнэ ба хугацаа: сараар (багцын өөрийн нөхцөл) эсвэл жилээр (админы тохиргоогоор)
+const PackagePrice = ({ pkg, terms }) =>
+  terms ? (
+    <div>
+      <p className="text-2xl font-bold">
+        {formatMoney(terms.price)}
+        <span className="text-sm font-normal text-gray-500"> / {terms.durationDays} хоног</span>
+      </p>
+      {terms.saving > 0 && (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-gray-400 line-through">{formatMoney(terms.fullPrice)}</span>
+          <Badge tone="green">−{terms.discountRate}% · {formatMoney(terms.saving)} хэмнэнэ</Badge>
+        </p>
+      )}
+    </div>
+  ) : (
+    <p className="text-2xl font-bold">
+      {formatMoney(pkg.basePrice)}
+      <span className="text-sm font-normal text-gray-500">{pkg.durationDays ? ` / ${pkg.durationDays} хоног` : ""}</span>
+    </p>
+  );
+
+const PERIODS = [
+  { value: "month", label: "Сараар" },
+  { value: "year", label: "Жилээр" },
+];
+
+const PeriodToggle = ({ value, onChange }) => (
+  <div className="inline-grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Төлбөрийн хугацаа">
+    {PERIODS.map((item) => (
+      <button
+        key={item.value}
+        type="button"
+        role="tab"
+        aria-selected={value === item.value}
+        onClick={() => onChange(item.value)}
+        className={`whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ${
+          value === item.value ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        {item.label}
+      </button>
+    ))}
+  </div>
+);
+
 const BillingClient = ({
   balance,
   subscription,
@@ -571,7 +862,14 @@ const BillingClient = ({
   awaiting,
   contractSigned,
   freePlan,
+  annual,
+  held,
+  planChanges,
+  planOptions,
+  canManage,
 }) => {
+  // Багцын үнийг сараар эсвэл жилээр харуулах
+  const [period, setPeriod] = useState("month");
   // { type: "topup" } | { type: "purchase", pkg } | { type: "payment", id }
   const [modal, setModal] = useState(null);
   const close = () => setModal(null);
@@ -626,10 +924,20 @@ const BillingClient = ({
           balance={balance}
           awaiting={awaiting?.subscription}
           freePlan={freePlan}
-          onRenew={() => setModal({ type: "purchase", pkg: renewalPackage, renew: true })}
+          annual={annual}
+          planChanges={planChanges}
+          options={planOptions}
+          canManage={canManage}
+          onUpgrade={() => setModal({ type: "upgrade" })}
+          onDowngrade={() => setModal({ type: "downgrade" })}
+          // Жилээр авсан багцыг жилээр сунгана
+          onRenew={() =>
+            setModal({ type: "purchase", pkg: renewalPackage, renew: true, period: subscription?.annual ? "year" : "month" })
+          }
         />
         <Card title="Хэтэвч">
           <p className="text-3xl font-bold text-gray-900">{formatMoney(balance)}</p>
+          {held > 0 && <p className="text-sm text-gray-600">Барьсан: {formatMoney(held)} (багц ахиулах захиалга)</p>}
           <p className="text-xs text-gray-500">Багцын тоо дууссаны дараах ашиглалт, багцын суурь үнийг эндээс төлж болно.</p>
           <Button
             variant="primary"
@@ -646,48 +954,65 @@ const BillingClient = ({
       <ReferralCard referral={referral} contractSigned={contractSigned} />
 
       <div className="space-y-3">
-        <h2 className="text-base font-semibold">Багцууд</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Багцууд</h2>
+          <div className="flex items-center gap-3">
+            {annual.discountRate > 0 && (
+              <span className="text-sm font-medium text-green-700">Жилээр авбал {annual.discountRate}% хөнгөлөлт</span>
+            )}
+            <PeriodToggle value={period} onChange={setPeriod} />
+          </div>
+        </div>
         {packages.length === 0 ? (
           <EmptyState>Одоогоор багц байхгүй байна</EmptyState>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {packages.map((pkg) => (
-              <Card key={pkg.id} className="flex flex-col">
-                <div className="space-y-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-base font-semibold">{pkg.name}</h3>
-                    {subscription?.packageId === pkg.id ? (
-                      <Badge tone="green">Идэвхтэй</Badge>
-                    ) : (
-                      requiresContract(pkg) && <Badge>Гэрээтэй</Badge>
-                    )}
+            {packages.map((pkg) => {
+              const terms = period === "year" ? annualTerms(pkg, annual) : null;
+              return (
+                <Card key={pkg.id} className="flex flex-col">
+                  <div className="space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-base font-semibold">{pkg.name}</h3>
+                      {subscription?.packageId === pkg.id ? (
+                        <Badge tone="green">Идэвхтэй</Badge>
+                      ) : (
+                        requiresContract(pkg) && <Badge>Гэрээтэй</Badge>
+                      )}
+                    </div>
+                    {pkg.description && <p className="text-sm text-gray-500">{pkg.description}</p>}
                   </div>
-                  {pkg.description && <p className="text-sm text-gray-500">{pkg.description}</p>}
-                </div>
-                <p className="text-2xl font-bold">
-                  {formatMoney(pkg.basePrice)}
-                  <span className="text-sm font-normal text-gray-500">
-                    {pkg.durationDays ? ` / ${pkg.durationDays} хоног` : ""}
-                  </span>
-                </p>
-                <div className="flex-1">
-                  <PackageItems pkg={pkg} />
-                </div>
-                {requiresContract(pkg) && !contractSigned ? (
-                  <p className="text-center text-xs text-gray-500">Гэрээ байгуулсны дараа идэвхжүүлнэ</p>
-                ) : pkg.basePrice === 0 && freePlan.exhausted ? (
-                  <p className="text-center text-xs text-gray-500">Үнэгүй багцын ашиглах эрх дууссан</p>
-                ) : pkg.id === renewalPackage?.id ? (
-                  <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg, renew: true })}>
-                    Сунгах
-                  </Button>
-                ) : (
-                  <Button variant="secondary" className="w-full" onClick={() => setModal({ type: "purchase", pkg })}>
-                    {pkg.basePrice === 0 ? "Идэвхжүүлэх" : "Худалдаж авах"}
-                  </Button>
-                )}
-              </Card>
-            ))}
+                  <PackagePrice pkg={pkg} terms={terms} />
+                  {period === "year" && !terms && (
+                    <p className="text-xs text-gray-500">Энэ багцыг жилээр санал болгохгүй (сараар харуулж байна).</p>
+                  )}
+                  <div className="flex-1">
+                    <PackageItems pkg={pkg} perMonth={Boolean(terms)} />
+                  </div>
+                  {requiresContract(pkg) && !contractSigned ? (
+                    <p className="text-center text-xs text-gray-500">Гэрээ байгуулсны дараа идэвхжүүлнэ</p>
+                  ) : pkg.basePrice === 0 && freePlan.exhausted ? (
+                    <p className="text-center text-xs text-gray-500">Үнэгүй багцын ашиглах эрх дууссан</p>
+                  ) : pkg.id === renewalPackage?.id ? (
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => setModal({ type: "purchase", pkg, renew: true, period: terms ? "year" : "month" })}
+                    >
+                      Сунгах
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => setModal({ type: "purchase", pkg, period: terms ? "year" : "month" })}
+                    >
+                      {pkg.basePrice === 0 ? "Идэвхжүүлэх" : "Худалдаж авах"}
+                    </Button>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
@@ -769,11 +1094,17 @@ const BillingClient = ({
       <Modal
         open={modal?.type === "purchase"}
         onClose={close}
-        title={modal?.pkg ? `"${modal.pkg.name}" багц${modal.renew ? " сунгах" : ""}` : ""}
+        title={
+          modal?.pkg
+            ? `"${modal.pkg.name}" багц${modal.period === "year" ? " (жилээр)" : ""}${modal.renew ? " сунгах" : ""}`
+            : ""
+        }
       >
         {modal?.pkg && (
           <PurchaseForm
             pkg={modal.pkg}
+            period={modal.period}
+            annual={annual}
             current={subscription}
             renew={modal.renew}
             balance={balance}
@@ -781,6 +1112,14 @@ const BillingClient = ({
             onPayment={showPayment}
             onDone={close}
           />
+        )}
+      </Modal>
+      <Modal open={modal?.type === "upgrade"} onClose={close} title="Багц ахиулах">
+        {modal?.type === "upgrade" && <UpgradeForm options={planOptions.upgrades} balance={balance} onDone={close} />}
+      </Modal>
+      <Modal open={modal?.type === "downgrade"} onClose={close} title="Багц бууруулах">
+        {modal?.type === "downgrade" && (
+          <DowngradeForm options={planOptions.downgrades} expiresAt={subscription?.expiresAt} onDone={close} />
         )}
       </Modal>
       <Modal open={Boolean(payment)} onClose={close} title="Төлбөр төлөх" className="max-w-2xl">

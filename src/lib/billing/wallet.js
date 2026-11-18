@@ -29,3 +29,38 @@ export async function changeBalance(tx, { organizationId, amount, type, descript
   });
   return balance;
 }
+
+// Багц ахиулах захиалгад үлдэгдлээс барина: balance → held. Ашиглах боломжтой үлдэгдэл
+// (balance) хүрэлцэхгүй бол InsufficientFundsError. Transaction (tx) дотор дуудна.
+export async function holdFunds(tx, { organizationId, amount, description, userId }) {
+  const wallet = await getWallet(organizationId, tx);
+  const { count } = await tx.wallet.updateMany({
+    where: { id: wallet.id, balance: { gte: amount } },
+    data: { balance: { decrement: amount }, held: { increment: amount } },
+  });
+  if (!count) throw new InsufficientFundsError("Хэтэвчний үлдэгдэл хүрэлцэхгүй байна");
+  const { balance } = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } });
+  await tx.walletTransaction.create({
+    data: { walletId: wallet.id, type: "HOLD", amount: -amount, balanceAfter: balance, description, userId },
+  });
+}
+
+// Барьсан дүнг үлдэгдэлд буцаана (захиалга цуцлагдсан): held → balance
+export async function releaseFunds(tx, { organizationId, amount, description, userId }) {
+  const wallet = await getWallet(organizationId, tx);
+  await tx.wallet.update({
+    where: { id: wallet.id },
+    data: { balance: { increment: amount }, held: { decrement: amount } },
+  });
+  const { balance } = await tx.wallet.findUnique({ where: { id: wallet.id }, select: { balance: true } });
+  await tx.walletTransaction.create({
+    data: { walletId: wallet.id, type: "HOLD_RELEASE", amount, balanceAfter: balance, description, userId },
+  });
+}
+
+// Барьсан дүнг зарцуулна (захиалга хэрэгжсэн): held-ээс хасна. Үлдэгдэлд нөлөөлөхгүй тул
+// гүйлгээ бүртгэхгүй (барих үед HOLD-оор бүртгэгдсэн).
+export async function consumeHeldFunds(tx, { organizationId, amount }) {
+  const wallet = await getWallet(organizationId, tx);
+  await tx.wallet.update({ where: { id: wallet.id }, data: { held: { decrement: amount } } });
+}
