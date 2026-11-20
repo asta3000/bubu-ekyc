@@ -86,3 +86,13 @@ export function upgradeQuote(subscription, targetAnnualPrice, now = new Date()) 
     months: period.remaining,
   };
 }
+
+// Жилийн багцын сүүлийн сард, автомат сунгалт асаалттай үед ахиулах захиалга: ахисан багцын
+// жилийн үнийг бүтнээр барьж, жилийн хугацаа дуусахад (сунгалтаар) хэрэгжинэ.
+// Сүүлийн сар биш, автомат сунгалт зогссон, эсвэл илүү үнэтэй биш бол null.
+// Буцаах: { amount, effectiveAt, months, renewal: true } эсвэл null
+export function renewalUpgradeQuote(subscription, targetAnnualPrice, now = new Date()) {
+  const period = annualPeriod(subscription, now);
+  if (!period?.isLast || !subscription.autoRenew || targetAnnualPrice <= subscription.basePrice) return null;
+  return { amount: targetAnnualPrice, effectiveAt: period.end, months: period.total, renewal: true };
+}

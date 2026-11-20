@@ -3,14 +3,16 @@ import { logAudit } from "@/lib/audit/log";
 import { formatDate, formatMoney } from "@/lib/format";
 import { annualPlanSettings } from "./annual-plan";
 import { LOCKED_TRANSACTION, uniqueReference } from "./payments";
-import { annualPeriod, annualTerms, upgradeQuote } from "./services";
+import { annualPeriod, annualTerms, renewalUpgradeQuote, upgradeQuote } from "./services";
 import { activeSubscription, cancelPendingUpgrades, contractBlocks } from "./subscriptions";
 import { InsufficientFundsError, consumeHeldFunds, holdFunds, lockWallet } from "./wallet";
 
 // Идэвхтэй багцын автомат сунгалт, жилийн багцын сар солигдох (тоо шинэчлэх), ахиулах,
 // бууруулах захиалга.
 //   Ахиулах: жилийн багцыг илүү үнэтэй багц руу. Үлдсэн сарын үнийн зөрүүг хэтэвчнээс барьж,
-//            одоогийн сар дуусахад хэрэгжүүлнэ. Сүүлийн сард боломжгүй.
+//            одоогийн сар дуусахад хэрэгжүүлнэ. Сүүлийн сард зөвхөн автомат сунгалт асаалттай бол:
+//            ахисан багцын жилийн үнийг бүтнээр барьж, жилийн хугацаа дуусахад тэр багцаар сунгана
+//            (renewal захиалга, renewExpiredSubscription хэрэгжүүлнэ).
 //   Бууруулах: жилийн хугацаа дуусахад хямд багц руу жилээр сунгана (nextPackageId).
 // Нэг удаад нэг л захиалга (ахиулах эсвэл бууруулах) хүлээгдэнэ.
 
@@ -46,7 +48,8 @@ export async function rollAnnualPeriod(organizationId) {
 
     let upgraded = null;
     const upgrade = await tx.packageUpgrade.findFirst({
-      where: { subscriptionId: subscription.id, status: "PENDING", effectiveAt: { lte: now } },
+      // Сунгалтаар хэрэгжих (renewal) захиалгыг renewExpiredSubscription шийднэ
+      where: { subscriptionId: subscription.id, status: "PENDING", renewal: false, effectiveAt: { lte: now } },
     });
     if (upgrade) {
       const pkg = await tx.package.findUnique({ where: { id: upgrade.packageId }, include: { items: true } });
@@ -102,21 +105,42 @@ export async function rollAnnualPeriod(organizationId) {
 
 // ---- Автомат сунгалт ----
 
-// Зогсоовол хүлээгдэж буй бууруулах захиалга цуцлагдана (бууруулах нь сунгалт тул)
-export async function setSubscriptionAutoRenew({ organizationId, autoRenew }) {
+// Зогсоовол хүлээгдэж буй бууруулах, сунгалтаар хэрэгжих ахиулах захиалга цуцлагдана (аль
+// аль нь сунгалт тул). Ахиулах захиалгын барьсан дүн хэтэвчинд буцна.
+// Буцаах: { subscription, cancelledUpgrade }
+export async function setSubscriptionAutoRenew({ organizationId, autoRenew, userId = null }) {
   const subscription = await activeSubscription(organizationId);
   if (!subscription) throw new PlanChangeError("Идэвхтэй багц байхгүй байна");
   if (!subscription.expiresAt) throw new PlanChangeError("Хугацаагүй багц сунгагдахгүй");
-  return prisma.subscription.update({
-    where: { id: subscription.id },
-    data: { autoRenew, ...(!autoRenew && { nextPackageId: null }) },
-  });
+  return prisma.$transaction(async (tx) => {
+    await lockWallet(tx, organizationId);
+    let cancelledUpgrade = 0;
+    if (!autoRenew) {
+      const renewalUpgrade = await tx.packageUpgrade.findFirst({
+        where: { subscriptionId: subscription.id, status: "PENDING", renewal: true },
+      });
+      if (renewalUpgrade) {
+        cancelledUpgrade = await cancelPendingUpgrades(
+          tx,
+          organizationId,
+          "Автомат сунгалт зогссон тул багц ахиулах захиалгыг цуцалж барьсныг буцаав",
+          { userId, subscriptionId: subscription.id },
+        );
+      }
+    }
+    const updated = await tx.subscription.update({
+      where: { id: subscription.id },
+      data: { autoRenew, ...(!autoRenew && { nextPackageId: null }) },
+    });
+    return { subscription: updated, cancelledUpgrade };
+  }, LOCKED_TRANSACTION);
 }
 
 // ---- Ахиулах, бууруулах боломжтой багцууд ----
 
-// Жилийн багцаас ахиулах (илүү үнэтэй), бууруулах (хямд) боломжтой багцууд.
-// Буцаах: { upgrades: [{ id, name, annualPrice, amount, effectiveAt, months }], downgrades: [{ id, name, annualPrice }] }
+// Жилийн багцаас ахиулах (илүү үнэтэй), бууруулах (хямд) боломжтой багцууд. Сүүлийн сард
+// ахиулах нь зөвхөн автомат сунгалттай үед, сунгалтаар хэрэгжинэ (renewal: true).
+// Буцаах: { upgrades: [{ id, name, annualPrice, amount, effectiveAt, months, renewal }], downgrades: [{ id, name, annualPrice }] }
 export async function planChangeOptions(organizationId, subscription) {
   if (!subscription?.annual) return { upgrades: [], downgrades: [] };
   const [settings, organization, packages] = await Promise.all([
@@ -134,8 +158,8 @@ export async function planChangeOptions(organizationId, subscription) {
     const terms = annualTerms(pkg, settings);
     if (!terms || contractBlocks(pkg, organization)) continue;
     if (terms.price > subscription.basePrice) {
-      const quote = upgradeQuote(subscription, terms.price);
-      if (quote) upgrades.push({ id: pkg.id, name: pkg.name, annualPrice: terms.price, ...quote });
+      const quote = upgradeQuote(subscription, terms.price) ?? renewalUpgradeQuote(subscription, terms.price);
+      if (quote) upgrades.push({ id: pkg.id, name: pkg.name, annualPrice: terms.price, renewal: false, ...quote });
     } else if (terms.price < subscription.basePrice) {
       downgrades.push({ id: pkg.id, name: pkg.name, annualPrice: terms.price });
     }
@@ -162,11 +186,16 @@ export async function orderUpgrade({ organizationId, userId, packageId }) {
     if (current.status !== "ACTIVE") throw new PlanChangeError("Идэвхтэй багц байхгүй байна");
     if (await pendingUpgrade(tx, current.id)) throw new PlanChangeError("Ахиулах захиалга аль хэдийн байна");
     if (current.nextPackageId) throw new PlanChangeError("Бууруулах захиалга байна. Эхлээд түүнийг цуцална уу.");
+    if (option.renewal && !current.autoRenew) {
+      throw new PlanChangeError("Сүүлийн сард багц ахиулахын тулд автомат сунгалт идэвхтэй байх шаардлагатай");
+    }
     try {
       await holdFunds(tx, {
         organizationId,
         amount: option.amount,
-        description: `"${option.name}" багц руу ахиулах захиалга (${formatDate(option.effectiveAt)}-нд хэрэгжинэ)`,
+        description: option.renewal
+          ? `"${option.name}" багцаар жилээр сунгах (ахиулах) захиалга (${formatDate(option.effectiveAt)}-нд хэрэгжинэ)`
+          : `"${option.name}" багц руу ахиулах захиалга (${formatDate(option.effectiveAt)}-нд хэрэгжинэ)`,
         userId,
       });
     } catch (error) {
@@ -183,6 +212,7 @@ export async function orderUpgrade({ organizationId, userId, packageId }) {
         annualPrice: option.annualPrice,
         amount: option.amount,
         effectiveAt: option.effectiveAt,
+        renewal: option.renewal,
         createdById: userId,
       },
       include: { package: { select: { name: true } } },
@@ -232,7 +262,12 @@ export async function pendingPlanChanges(subscription) {
     subscription.nextPackageId ? packageWithItems(prisma, subscription.nextPackageId) : null,
   ]);
   return {
-    upgrade: upgrade && { packageName: upgrade.package.name, amount: upgrade.amount, effectiveAt: upgrade.effectiveAt },
+    upgrade: upgrade && {
+      packageName: upgrade.package.name,
+      amount: upgrade.amount,
+      effectiveAt: upgrade.effectiveAt,
+      renewal: upgrade.renewal,
+    },
     downgrade: next && { packageName: next.name, effectiveAt: subscription.expiresAt },
   };
 }

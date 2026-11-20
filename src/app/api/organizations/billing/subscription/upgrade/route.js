@@ -6,7 +6,8 @@ import { planChangeSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit/log";
 
 // Жилийн багцыг илүү үнэтэй багц руу ахиулах захиалга: үлдсэн сарын зөрүүг хэтэвчнээс барьж,
-// одоогийн сар дуусахад хэрэгжүүлнэ (ORG_ADMIN)
+// одоогийн сар дуусахад хэрэгжүүлнэ. Сүүлийн сард (автомат сунгалттай бол) ахисан багцын жилийн
+// үнийг барьж, сунгалтаар хэрэгжүүлнэ (ORG_ADMIN)
 export async function POST(request) {
   const { error, session, organization } = await requireBillingAdminApi();
   if (error) return error;
@@ -22,11 +23,17 @@ export async function POST(request) {
       actor: session.user,
       organizationId: organization.id,
       entity: { type: "PackageUpgrade", id: upgrade.id },
-      summary: `"${upgrade.package.name}" багц руу ахиулах захиалга өгч ${formatMoney(upgrade.amount)} барив (${when}-нд хэрэгжинэ)`,
-      metadata: { packageId: data.packageId, amount: upgrade.amount, effectiveAt: upgrade.effectiveAt },
+      summary: upgrade.renewal
+        ? `Жилийн хугацаа дуусахад "${upgrade.package.name}" багцаар жилээр сунгах (ахиулах) захиалга өгч ${formatMoney(upgrade.amount)} барив (${when}-нд хэрэгжинэ)`
+        : `"${upgrade.package.name}" багц руу ахиулах захиалга өгч ${formatMoney(upgrade.amount)} барив (${when}-нд хэрэгжинэ)`,
+      metadata: { packageId: data.packageId, amount: upgrade.amount, effectiveAt: upgrade.effectiveAt, renewal: upgrade.renewal },
     });
     return Response.json(
-      { message: `"${upgrade.package.name}" багц руу ${when}-нд ахина. ${formatMoney(upgrade.amount)} хэтэвчнээс барьлаа.` },
+      {
+        message: upgrade.renewal
+          ? `${when}-нд багц сунгагдахдаа "${upgrade.package.name}" багц руу жилээр ахина. ${formatMoney(upgrade.amount)} хэтэвчнээс барьлаа.`
+          : `"${upgrade.package.name}" багц руу ${when}-нд ахина. ${formatMoney(upgrade.amount)} хэтэвчнээс барьлаа.`,
+      },
       { status: 201 },
     );
   } catch (err) {

@@ -299,7 +299,7 @@ const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade
 
   const toggleAutoRenew = () => {
     const message = subscription.autoRenew
-      ? `Автомат сунгалтыг зогсоох уу? Багц ${formatDate(subscription.expiresAt)} хүртэл ашиглагдаад цааш сунгагдахгүй.${downgrade ? " Бууруулах захиалга мөн цуцлагдана." : ""}`
+      ? `Автомат сунгалтыг зогсоох уу? Багц ${formatDate(subscription.expiresAt)} хүртэл ашиглагдаад цааш сунгагдахгүй.${downgrade ? " Бууруулах захиалга мөн цуцлагдана." : ""}${upgrade?.renewal ? " Ахиулах захиалга цуцлагдаж, барьсан дүн хэтэвчинд буцна." : ""}`
       : "Автомат сунгалтыг сэргээх үү? Хугацаа дуусахад хэтэвчнээс суутгаж сунгана.";
     if (window.confirm(message)) send("/api/organizations/billing/subscription", "PATCH", { autoRenew: !subscription.autoRenew });
   };
@@ -331,8 +331,10 @@ const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade
       {upgrade && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
           <span>
-            {formatDate(upgrade.effectiveAt)}-нд &quot;{upgrade.packageName}&quot; багц руу ахина ·{" "}
-            {formatMoney(upgrade.amount)} барьсан
+            {upgrade.renewal
+              ? `${formatDate(upgrade.effectiveAt)}-нд сунгагдахдаа "${upgrade.packageName}" багц руу жилээр ахина`
+              : `${formatDate(upgrade.effectiveAt)}-нд "${upgrade.packageName}" багц руу ахина`}{" "}
+            · {formatMoney(upgrade.amount)} барьсан
           </span>
           {canManage && (
             <Button
@@ -357,6 +359,12 @@ const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade
           )}
         </div>
       )}
+      {canManage && period?.isLast && !subscription.autoRenew && !upgrade && (
+        <p className="text-sm text-gray-600">
+          Сүүлийн сард багц ахиулахын тулд автомат сунгалтыг идэвхжүүлнэ үү. Ахисан багцын жилийн үнийг хэтэвчнээс барьж,
+          сунгалтаар хэрэгжүүлнэ.
+        </p>
+      )}
       {canManage && subscription.annual && !upgrade && !downgrade && (options.upgrades.length > 0 || options.downgrades.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {options.upgrades.length > 0 && (
@@ -380,6 +388,8 @@ const UpgradeForm = ({ options, balance, onDone }) => {
   const [packageId, setPackageId] = useState(options[0]?.id ?? "");
   const { errors, success, pending, send } = useSubmit();
   const selected = options.find((option) => option.id === packageId);
+  // Сүүлийн сард: ахисан багцын жилийн үнийг барьж, сунгалтаар хэрэгжинэ
+  const renewal = options.some((option) => option.renewal);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -391,8 +401,9 @@ const UpgradeForm = ({ options, balance, onDone }) => {
     <form onSubmit={submit} className="space-y-4">
       <Message error={errors.form ?? errors.packageId} success={success} />
       <p className="text-sm text-gray-600">
-        Үлдсэн сарын үнийн зөрүүг хэтэвчнээс барьж, одоогийн сар дуусахад багц ахина. Захиалгыг цуцалбал барьсан дүн
-        буцна.
+        {renewal
+          ? "Жилийн сүүлийн сар тул ахисан багцын жилийн үнийг хэтэвчнээс барьж, багц сунгагдахад (жилийн хугацаа дуусахад) ахисан багцаар жилээр сунгана. Захиалгыг цуцлах эсвэл автомат сунгалтыг зогсоовол барьсан дүн буцна."
+          : "Үлдсэн сарын үнийн зөрүүг хэтэвчнээс барьж, одоогийн сар дуусахад багц ахина. Захиалгыг цуцалбал барьсан дүн буцна."}
       </p>
       <div className="space-y-2">
         {options.map((option) => (
@@ -419,7 +430,8 @@ const UpgradeForm = ({ options, balance, onDone }) => {
             <span className="text-right">
               <span className="block font-semibold">{formatMoney(option.amount)}</span>
               <span className="block text-xs text-gray-500">
-                {option.months} сарын зөрүү · {formatDate(option.effectiveAt)}-нд
+                {option.renewal ? "Жилийн үнэ · сунгалтаар" : `${option.months} сарын зөрүү`} ·{" "}
+                {formatDate(option.effectiveAt)}-нд
               </span>
             </span>
           </label>

@@ -7,8 +7,8 @@ import { freePlanBlock } from "./free-plan";
 import { rollAnnualPeriod } from "./plan-changes";
 import { annualTerms } from "./services";
 import { LOCKED_TRANSACTION, hasPendingPurchase, uniqueReference } from "./payments";
-import { activateSubscription, activeSubscription, contractBlocks, createSubscription } from "./subscriptions";
-import { changeBalance, getWallet, lockWallet } from "./wallet";
+import { activateSubscription, activeSubscription, cancelPendingUpgrades, contractBlocks, createSubscription } from "./subscriptions";
+import { changeBalance, consumeHeldFunds, getWallet, lockWallet } from "./wallet";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -17,6 +17,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // дууссан) хэвээр үлдээнэ: энэ хооронд үйлчилгээ ашиглах боломжгүй, хэтэвч цэнэглэгдсэний
 // дараах дараагийн шалгалтаар (цэнэглэлт, үйлчилгээ ашиглах, багцын хуудас, cron) сунгагдана.
 // Багц идэвхгүй болсон эсвэл өөр багцын төлбөр хүлээгдэж буй бол дуусгана (дахин оролдохгүй).
+// Сүүлийн сард өгсөн ахиулах (renewal) захиалгатай бол барьсан дүнгээр ахисан багцаар жилээр
+// сунгана; сунгахгүй бол барьсан дүнг буцаана.
 // Өмнөх багцын үлдсэн тоо шилжихгүй. Буцаах: шинэ захиалга эсвэл null
 export async function renewExpiredSubscription(organizationId) {
   const now = new Date();
@@ -34,16 +36,60 @@ export async function renewExpiredSubscription(organizationId) {
     if (previous.status !== "ACTIVE") return null;
     // Дууссан хугацааг хэвээр үлдээж төлөвийг нь л солино
     const end = () => tx.subscription.update({ where: { id: previous.id }, data: { status: "ENDED" } });
+    // Сунгалтаар хэрэгжих ахиулах захиалгын барьсан дүнг буцаана
+    const releaseUpgrade = (description) =>
+      cancelPendingUpgrades(tx, organizationId, description, { subscriptionId: previous.id });
+    const endWithoutRenewal = async () => {
+      await releaseUpgrade("Багц сунгагдаагүй тул ахиулах захиалгыг цуцалж барьсныг буцаав");
+      await end();
+      return null;
+    };
 
     if ((await activeSubscription(organizationId, tx)) || (await hasPendingPurchase(tx, organizationId))) {
-      await end();
-      return null;
+      return endWithoutRenewal();
     }
     // Автомат сунгалтыг зогсоосон бол сунгахгүй, дуусгана
-    if (!previous.autoRenew) {
-      await end();
-      return null;
+    if (!previous.autoRenew) return endWithoutRenewal();
+
+    const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
+
+    // Сүүлийн сард өгсөн ахиулах захиалга: ахисан багцаар жилээр, барьсан дүнгээр (захиалах үеийн
+    // жилийн үнэ) сунгана
+    const upgrade = await tx.packageUpgrade.findFirst({
+      where: { subscriptionId: previous.id, status: "PENDING", renewal: true },
+    });
+    if (upgrade) {
+      const target = await tx.package.findFirst({ where: { id: upgrade.packageId, status: "ACTIVE" }, include: { items: true } });
+      const offer = target && (await packageOffer(target, "year", tx));
+      if (offer && !contractBlocks(offer, organization)) {
+        await end();
+        const subscription = await createSubscription({ ...offer, basePrice: upgrade.annualPrice }, organizationId, tx);
+        await consumeHeldFunds(tx, { organizationId, amount: upgrade.amount });
+        if (upgrade.amount > 0) {
+          await tx.payment.create({
+            data: {
+              organizationId,
+              createdById: upgrade.createdById,
+              purpose: "PACKAGE_PURCHASE",
+              method: "WALLET",
+              status: "PAID",
+              amount: upgrade.amount,
+              subscriptionId: subscription.id,
+              reference: await uniqueReference(),
+              paidAt: now,
+            },
+          });
+        }
+        // activateSubscription хүлээгдэж буй захиалгуудыг цуцалдаг тул түүнээс өмнө хэрэгжсэн болгоно
+        await tx.packageUpgrade.update({ where: { id: upgrade.id }, data: { status: "APPLIED", appliedAt: now } });
+        const renewed = await activateSubscription(tx, subscription.id);
+        return { ...renewed, price: upgrade.amount, upgradedFrom: previous.packageName };
+      }
+      // Ахиулах багц боломжгүй болсон (идэвхгүй, жилээр санал болгохоо больсон, гэрээ шаардах):
+      // барьсныг буцааж ердийн журмаар сунгана
+      await releaseUpgrade("Ахиулах багц боломжгүй болсон тул захиалгыг цуцалж барьсныг буцаав");
     }
+
     // Бууруулах захиалгатай бол хямд багц руу (жилээр) сунгана
     const renewalPackageId = previous.nextPackageId ?? previous.packageId;
     const base = renewalPackageId
@@ -54,7 +100,6 @@ export async function renewExpiredSubscription(organizationId) {
     const pkg = base && ((previous.annual && (await packageOffer(base, "year", tx))) || base);
     // Багц гэрээ шаарддаг болсон бол гэрээгүй байгууллагад, үнэгүй багцын сунгалтын эрх
     // дууссан бол сунгахгүй
-    const organization = await tx.organization.findUnique({ where: { id: organizationId }, select: { contractSigned: true } });
     if (!pkg || contractBlocks(pkg, organization) || (await freePlanBlock(pkg, organizationId, tx))) {
       await end();
       return null;
@@ -89,7 +134,14 @@ export async function renewExpiredSubscription(organizationId) {
     return { ...renewed, price: pkg.basePrice };
   }, LOCKED_TRANSACTION).then(async (renewed) => {
     // Хэрэглэгчийн үйлдэл биш (систем) тул actor хоосон
-    if (renewed) {
+    if (renewed?.upgradedFrom) {
+      await logAudit({
+        action: "billing.upgrade_applied",
+        organizationId,
+        entity: { type: "Subscription", id: renewed.id },
+        summary: `"${renewed.upgradedFrom}" багцыг "${renewed.packageName}" болгон ахиулж жилээр сунгав (барьсан ${formatMoney(renewed.price)})`,
+      });
+    } else if (renewed) {
       await logAudit({
         action: "billing.renew_auto",
         organizationId,

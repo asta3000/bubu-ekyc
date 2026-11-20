@@ -601,6 +601,9 @@ model PackageUpgrade {
   annualPrice    Int
   amount         Int
   effectiveAt    DateTime
+  // Сүүлийн сард (автомат сунгалттай үед) өгсөн захиалга: ахисан багцын жилийн үнийг бүтнээр
+  // барьж, жилийн хугацаа дуусахад тэр багцаар жилээр сунгана (renewExpiredSubscription)
+  renewal        Boolean                @default(false)
   status         PACKAGE_UPGRADE_STATUS @default(PENDING)
   createdById    String?
   createdAt      DateTime               @default(now())
