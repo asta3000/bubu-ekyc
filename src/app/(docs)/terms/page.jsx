@@ -1,11 +1,7 @@
-import { Markdown } from "@/components/Markdown";
-import { readDocument } from "@/lib/content";
+import { DocumentPage } from "../document";
 
 export const metadata = { title: "Үйлчилгээний нөхцөл" };
 
-const Page = async () => {
-  const { markdown } = await readDocument("terms");
-  return <Markdown source={markdown} />;
-};
+const Page = () => <DocumentPage docKey="terms" />;
 
 export default Page;

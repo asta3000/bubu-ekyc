@@ -13,6 +13,7 @@ const TABS = [
   { href: "/managements/coupons", label: "Купон" },
   { href: "/managements/reports", label: "Тайлан" },
   { href: "/managements/settings", label: "Тохиргоо" },
+  { href: "/managements/content", label: "Баримт бичиг" },
   { href: "/managements/audit", label: "Аудит лог" },
 ];
 

@@ -878,3 +878,14 @@ model AuditLog {
   @@index([category, createdAt])
   @@index([entityType, entityId])
 }
+
+// Системд харуулах баримтууд (үйлчилгээний нөхцөл, нууцлалын бодлого, гарын авлага). Админ
+// /managements/content-оос засна. Мөр байхгүй бол src/content/<key>.md-ийн анхны агуулгыг харуулна.
+// version нь нөхцөл, бодлогын хувилбар: өөрчлөгдвөл хэрэглэгчээс дахин зөвшөөрөл авна.
+model ContentDocument {
+  key         String   @id
+  markdown    String
+  version     String?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}

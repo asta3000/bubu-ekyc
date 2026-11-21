@@ -96,6 +96,7 @@ export const AUDIT_ACTIONS = {
   "bank_account.delete": { label: "Банкны данс устгасан" },
   "sanctions.import": { label: "Хоригийн жагсаалт импортолсон" },
   "settings.system": { label: "Системийн мэдээлэл өөрчилсөн" },
+  "settings.content": { label: "Нөхцөл, бодлого, гарын авлага засварласан" },
   "settings.matching": { label: "Тулгалтын оноо өөрчилсөн" },
   "settings.matching_reset": { label: "Тулгалтын оноог анхны утгад буцаасан" },
   "settings.referral": { label: "Санал болголтын хувь өөрчилсөн" },
