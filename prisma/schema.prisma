@@ -95,6 +95,9 @@ model User {
   lastName        String
   contact         String
   isEmailVerified Boolean   @default(false)
+  // Хамгийн сүүлд зөвшөөрсөн үйлчилгээний нөхцөлийн хувилбар (src/content/terms.md-ийн version)
+  termsVersion    String?
+  termsAcceptedAt DateTime?
   password        String?
   organizationId  String?
   role            USER_ROLE @default(ORGANIZATION)

@@ -1,17 +1,19 @@
 import { parseBody } from "@/lib/api";
-import { requireBillingAdminApi } from "@/lib/billing/access";
+import { adminOnlyError, requireBillingApi } from "@/lib/billing/access";
 import { PlanChangeError, setSubscriptionAutoRenew } from "@/lib/billing/plan-changes";
 import { formatDate } from "@/lib/format";
 import { autoRenewSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit/log";
 
-// Идэвхтэй багцын автомат сунгалтыг зогсоох / сэргээх (ORG_ADMIN)
+// Идэвхтэй багцын автомат сунгалтыг зогсоох (ORG_ADMIN) / сэргээх (бүх хэрэглэгч)
 export async function PATCH(request) {
-  const { error, session, organization } = await requireBillingAdminApi();
+  const { error, session, organization } = await requireBillingApi();
   if (error) return error;
 
   const { data, error: invalid } = await parseBody(request, autoRenewSchema);
   if (invalid) return invalid;
+  const denied = adminOnlyError(session, !data.autoRenew);
+  if (denied) return denied;
 
   try {
     const { subscription, cancelledUpgrade } = await setSubscriptionAutoRenew({

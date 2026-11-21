@@ -48,6 +48,7 @@ export const AUDIT_ACTIONS = {
   "user.update": { label: "Хэрэглэгчийн мэдээлэл өөрчилсөн", org: true },
   "user.password_set": { label: "Хэрэглэгчийн нууц үг сольсон", org: true },
   "profile.update": { label: "Профайлаа өөрчилсөн", org: true },
+  "profile.terms_accept": { label: "Үйлчилгээний нөхцөл зөвшөөрсөн", org: true },
 
   "screening.create": { label: "Хориг тулгасан", org: true },
   "screening.batch": { label: "Файлаар олноор тулгасан", org: true },

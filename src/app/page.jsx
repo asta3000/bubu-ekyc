@@ -12,6 +12,10 @@ import PricingCards from "./_components/pricing-cards";
 // Нэвтрээгүй хэрэглэгчийн нүүр хуудас (вэбсайт). Нэвтэрсэн хэрэглэгчийг proxy
 // эрхийнх нь үндсэн хуудас руу шилжүүлдэг тул энд session шалгахгүй.
 
+// Гэрээний загвар. public/files/verdecx-contract.docx-г шинэ файлаар сольж хуулахад вэбсайтаас
+// шинэ гэрээ татагдана (нэр нь ижил байх ёстой).
+const CONTRACT_FILE = "/files/verdecx-contract.docx";
+
 const NAV = [
   { href: "#features", label: "Үйлчилгээ" },
   { href: "#sources", label: "Жагсаалтууд" },
@@ -451,6 +455,12 @@ const Cta = () => (
             Нэвтрэх
           </Link>
         </div>
+        <p className="text-sm text-slate-400">
+          Төлбөртэй багц ашиглахын тулд гэрээ байгуулна.{" "}
+          <a href={CONTRACT_FILE} download className="font-medium text-teal-300 underline hover:text-teal-200">
+            Гэрээний загвар татах
+          </a>
+        </p>
       </div>
     </div>
   </section>
@@ -463,12 +473,25 @@ const Footer = () => (
         <LogoMark className="h-6 w-6" />
         <span>© VerdecX. Бүх эрх хуулиар хамгаалагдсан.</span>
       </div>
-      <div className="flex gap-6 text-sm text-slate-500">
+      <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-slate-500">
         {NAV.map((item) => (
           <a key={item.href} href={item.href} className="hover:text-slate-900">
             {item.label}
           </a>
         ))}
+        <Link href="/terms" className="hover:text-slate-900">
+          Үйлчилгээний нөхцөл
+        </Link>
+        <Link href="/privacy" className="hover:text-slate-900">
+          Нууцлал ба аюулгүй байдал
+        </Link>
+        <Link href="/guide" className="hover:text-slate-900">
+          Гарын авлага
+        </Link>
+        {/* public/files/verdecx-contract.docx-г сольж хуулахад шинэ гэрээ татагдана */}
+        <a href={CONTRACT_FILE} download className="hover:text-slate-900">
+          Гэрээний загвар татах
+        </a>
       </div>
     </div>
   </footer>

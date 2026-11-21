@@ -4,6 +4,10 @@ const nextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   reactCompiler: true,
+  // src/content/*.md-г (үйлчилгээний нөхцөл, гарын авлага) серверт fs-ээр уншдаг
+  outputFileTracingIncludes: {
+    "/*": ["src/content/**/*"],
+  },
   turbopack: {
     rules: {
       "*.css": {

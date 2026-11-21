@@ -1,5 +1,5 @@
 import { parseBody } from "@/lib/api";
-import { requireBillingApi } from "@/lib/billing/access";
+import { adminOnlyError, requireBillingApi } from "@/lib/billing/access";
 import { AddonError, purchaseAddon, setAddonAutoRenew } from "@/lib/billing/addons";
 import { InsufficientFundsError } from "@/lib/billing/wallet";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -39,13 +39,16 @@ export async function POST(request) {
   }
 }
 
-// Нэмэлт жагсаалтын автомат сунгалтыг зогсоох / сэргээх. Зогсоосон ч хугацаа дуустал ашиглана.
+// Нэмэлт жагсаалтын автомат сунгалтыг зогсоох (ORG_ADMIN) / сэргээх (бүх хэрэглэгч).
+// Зогсоосон ч хугацаа дуустал ашиглана.
 export async function PATCH(request) {
   const { error, session, organization } = await requireBillingApi();
   if (error) return error;
 
   const { data, error: invalid } = await parseBody(request, addonAutoRenewSchema);
   if (invalid) return invalid;
+  const denied = adminOnlyError(session, !data.autoRenew);
+  if (denied) return denied;
 
   try {
     const addon = await setAddonAutoRenew({ organizationId: organization.id, ...data });

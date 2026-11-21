@@ -8,6 +8,7 @@ import { ROLE_LABELS } from "@/lib/labels";
 import { Badge } from "./Badges";
 import { CopyButton } from "./Buttons";
 import { Logo } from "./Logos";
+import { clearTermsSeen } from "./TermsGate";
 
 
 const initials = (user) =>
@@ -112,13 +113,23 @@ const UserMenu = ({ user }) => {
           <MenuLink href="/profile" onClick={close}>
             Миний мэдээлэл
           </MenuLink>
+          <MenuLink href="/terms" onClick={close}>
+            Үйлчилгээний нөхцөл
+          </MenuLink>
+          <MenuLink href="/privacy" onClick={close}>
+            Нууцлал ба аюулгүй байдал
+          </MenuLink>
+          <MenuLink href="/guide" onClick={close}>
+            Гарын авлага
+          </MenuLink>
           {user.role === "ADMIN" && (
             <MenuLink href="/managements" onClick={close}>
               Удирдлага
             </MenuLink>
           )}
           <div className="my-1 h-px bg-gray-100" />
-          <form action={logout}>
+          {/* Дараагийн нэвтрэлтэд үйлчилгээний нөхцөл дахин харагдана */}
+          <form action={logout} onSubmit={clearTermsSeen}>
             <button
               type="submit"
               role="menuitem"

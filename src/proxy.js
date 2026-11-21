@@ -6,8 +6,8 @@ const AUTH_PAGES = ["/login", "/register", "/recovery"];
 
 // Session шаардахгүй замууд: Auth.js, бүртгэл, нууц үг сэргээх API,
 // Vercel Cron (CRON_SECRET-ээр өөрөө шалгана), QPay callback (QPay-ээс өөрөөс нь шалгана),
-// хэвлэсэн баримт шалгах (QR-ын гарын үсгээр шалгана)
-const PUBLIC_PATHS = ["/api/auth", "/api/cron", "/api/payments/qpay/callback", "/verify"];
+// хэвлэсэн баримт шалгах (QR-ын гарын үсгээр шалгана), үйлчилгээний нөхцөл, нууцлалын бодлого, гарын авлага
+const PUBLIC_PATHS = ["/api/auth", "/api/cron", "/api/payments/qpay/callback", "/verify", "/terms", "/privacy", "/guide"];
 
 // Role-оор хамгаалах замууд. Илүү нарийн замыг эхэнд бичнэ.
 const ROLE_RULES = [

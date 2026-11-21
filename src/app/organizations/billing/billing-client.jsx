@@ -291,7 +291,9 @@ const RenewalNotice = ({ subscription, renewalPackage, balance, freePlan, annual
 // Идэвхтэй багцын үйлчилгээ бүрийн үлдэгдэл
 // onRenew: идэвхтэй багцаа одоо гараар сунгах (багц идэвхгүй болсон бол товч гарахгүй)
 // Автомат сунгалтын төлөв, жилийн багцын сар, хүлээгдэж буй ахиулах/бууруулах захиалга.
-// canManage: ORG_ADMIN л өөрчилнө
+// Борлуулалтыг дэмжих үйлдлийг (ахиулах, автомат сунгалт сэргээх, бууруулах захиалга цуцлах) бүх
+// хэрэглэгч, хязгаарлах үйлдлийг (автомат сунгалт зогсоох, бууруулах, ахиулах захиалга цуцлах)
+// зөвхөн байгууллагын админ (canManage) хийнэ.
 const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade, onDowngrade }) => {
   const { errors, success, pending, send } = useSubmit();
   const period = annualPeriod(subscription);
@@ -316,7 +318,7 @@ const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade
             Автомат сунгалт:
             {subscription.autoRenew ? <Badge tone="green">Идэвхтэй</Badge> : <Badge>Идэвхгүй</Badge>}
           </span>
-          {canManage && (
+          {(canManage || !subscription.autoRenew) && (
             <Button variant="link" onClick={toggleAutoRenew} disabled={pending}>
               {subscription.autoRenew ? "Автомат сунгалт зогсоох" : "Автомат сунгалт сэргээх"}
             </Button>
@@ -352,27 +354,28 @@ const PlanControls = ({ subscription, planChanges, options, canManage, onUpgrade
           <span>
             {formatDate(downgrade.effectiveAt)}-нд &quot;{downgrade.packageName}&quot; багц руу жилээр шилжинэ
           </span>
-          {canManage && (
-            <Button variant="link" onClick={() => cancel("downgrade", "Бууруулах захиалгыг цуцлах уу?")} disabled={pending}>
-              Цуцлах
-            </Button>
-          )}
+          <Button variant="link" onClick={() => cancel("downgrade", "Бууруулах захиалгыг цуцлах уу?")} disabled={pending}>
+            Цуцлах
+          </Button>
         </div>
       )}
-      {canManage && period?.isLast && !subscription.autoRenew && !upgrade && (
+      {period?.isLast && !subscription.autoRenew && !upgrade && (
         <p className="text-sm text-gray-600">
           Сүүлийн сард багц ахиулахын тулд автомат сунгалтыг идэвхжүүлнэ үү. Ахисан багцын жилийн үнийг хэтэвчнээс барьж,
           сунгалтаар хэрэгжүүлнэ.
         </p>
       )}
-      {canManage && subscription.annual && !upgrade && !downgrade && (options.upgrades.length > 0 || options.downgrades.length > 0) && (
+      {subscription.annual &&
+        !upgrade &&
+        !downgrade &&
+        (options.upgrades.length > 0 || (canManage && options.downgrades.length > 0)) && (
         <div className="flex flex-wrap gap-2">
           {options.upgrades.length > 0 && (
             <Button variant="secondary" onClick={onUpgrade}>
               Багц ахиулах
             </Button>
           )}
-          {options.downgrades.length > 0 && (
+          {canManage && options.downgrades.length > 0 && (
             <Button variant="secondary" onClick={onDowngrade}>
               Багц бууруулах
             </Button>
@@ -682,7 +685,8 @@ const ReferralCard = ({ referral, contractSigned }) => (
 );
 
 // Улсын нэмэлт жагсаалтууд: үндсэн багц дээр хэтэвчнээс худалдаж авна, идэвхтэй бол сунгана
-const AddonsSection = ({ addons, subscription, balance, contractSigned }) => {
+// canManage: автомат сунгалт зогсоох (зөвхөн байгууллагын админ). Сэргээх, худалдан авахыг бүгд.
+const AddonsSection = ({ addons, subscription, balance, contractSigned, canManage }) => {
   const { errors, success, pending, send } = useSubmit();
   const [busy, setBusy] = useState(null);
 
@@ -711,7 +715,7 @@ const AddonsSection = ({ addons, subscription, balance, contractSigned }) => {
         <h2 className="text-base font-semibold">Улсын нэмэлт жагсаалт</h2>
         <p className="text-sm text-gray-500">
           Үндсэн багцад НҮБ, ЕХ, АНУ, Их Британи, Дэлхийн банкны жагсаалт багтана. Бусад улсын жагсаалтаар тулгах бол энд идэвхжүүлнэ.
-          Хугацаа дуусахад хэтэвчнээс автоматаар сунгагдана. Зогсоох бол &quot;Автомат сунгалт зогсоох&quot; дарна.
+          Хугацаа дуусахад хэтэвчнээс автоматаар сунгагдана. Автомат сунгалтыг байгууллагын админ зогсооно.
         </p>
       </div>
       <Message error={errors.form} success={success} />
@@ -738,7 +742,7 @@ const AddonsSection = ({ addons, subscription, balance, contractSigned }) => {
                   Хугацаа {formatDate(addon.expiresAt)}-нд дууссан. Хэтэвч хүрэлцэхэд автоматаар сунгагдана.
                 </p>
               )}
-              {addon.expiresAt && (
+              {addon.expiresAt && (canManage || !addon.autoRenew) && (
                 <Button variant="link" onClick={() => toggleAutoRenew(addon)} disabled={pending}>
                   {addon.autoRenew ? "Автомат сунгалт зогсоох" : "Автомат сунгалт сэргээх"}
                 </Button>
@@ -1030,7 +1034,13 @@ const BillingClient = ({
       </div>
 
       {addons.length > 0 && (
-        <AddonsSection addons={addons} subscription={subscription} balance={balance} contractSigned={contractSigned} />
+        <AddonsSection
+          addons={addons}
+          subscription={subscription}
+          balance={balance}
+          contractSigned={contractSigned}
+          canManage={canManage}
+        />
       )}
 
       <div className="grid items-start gap-6 xl:grid-cols-2">

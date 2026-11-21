@@ -1,5 +1,5 @@
 import { parseBody } from "@/lib/api";
-import { requireBillingAdminApi } from "@/lib/billing/access";
+import { requireBillingAdminApi, requireBillingApi } from "@/lib/billing/access";
 import { PlanChangeError, cancelDowngrade, orderDowngrade } from "@/lib/billing/plan-changes";
 import { formatDate } from "@/lib/format";
 import { planChangeSchema } from "@/lib/validations";
@@ -30,8 +30,9 @@ export async function POST(request) {
   }
 }
 
+// Бууруулах захиалгыг цуцлах (бүх хэрэглэгч)
 export async function DELETE() {
-  const { error, session, organization } = await requireBillingAdminApi();
+  const { error, session, organization } = await requireBillingApi();
   if (error) return error;
   try {
     await cancelDowngrade({ organizationId: organization.id });

@@ -1,5 +1,5 @@
 import { parseBody } from "@/lib/api";
-import { requireBillingAdminApi } from "@/lib/billing/access";
+import { requireBillingAdminApi, requireBillingApi } from "@/lib/billing/access";
 import { PlanChangeError, cancelUpgrade, orderUpgrade } from "@/lib/billing/plan-changes";
 import { formatDate, formatMoney } from "@/lib/format";
 import { planChangeSchema } from "@/lib/validations";
@@ -7,9 +7,9 @@ import { logAudit } from "@/lib/audit/log";
 
 // Жилийн багцыг илүү үнэтэй багц руу ахиулах захиалга: үлдсэн сарын зөрүүг хэтэвчнээс барьж,
 // одоогийн сар дуусахад хэрэгжүүлнэ. Сүүлийн сард (автомат сунгалттай бол) ахисан багцын жилийн
-// үнийг барьж, сунгалтаар хэрэгжүүлнэ (ORG_ADMIN)
+// үнийг барьж, сунгалтаар хэрэгжүүлнэ (бүх хэрэглэгч)
 export async function POST(request) {
-  const { error, session, organization } = await requireBillingAdminApi();
+  const { error, session, organization } = await requireBillingApi();
   if (error) return error;
 
   const { data, error: invalid } = await parseBody(request, planChangeSchema);
@@ -42,7 +42,7 @@ export async function POST(request) {
   }
 }
 
-// Ахиулах захиалгыг цуцалж барьсан дүнг хэтэвчинд буцаана
+// Ахиулах захиалгыг цуцалж барьсан дүнг хэтэвчинд буцаана (ORG_ADMIN)
 export async function DELETE() {
   const { error, session, organization } = await requireBillingAdminApi();
   if (error) return error;
